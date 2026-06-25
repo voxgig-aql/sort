@@ -1,11 +1,10 @@
 name: tests
 
-# The bloom-filter module is written in AQL, so CI has to build the
-# `aql` interpreter from source before it can run anything. The
-# language has no tagged release yet and has shipped breaking changes
-# between commits, so we pin AQL_REF to the exact commit this module is
-# verified against. Bump it (and re-run the suites locally) when
-# adopting a newer aql.
+# The sort module is written in AQL, so CI has to build the `aql`
+# interpreter from source before it can run anything. The language has no
+# tagged release yet and has shipped breaking changes between commits, so
+# we pin AQL_REF to the exact commit this module is verified against. Bump
+# it (and re-run the suites locally) when adopting a newer aql.
 on:
   push:
     branches: [main]
@@ -13,15 +12,17 @@ on:
   workflow_dispatch:
 
 env:
-  # aql-lang/aql @ main, 2026-06-06. Pinned to the exact commit this
-  # module is verified against.
-  AQL_REF: db828ecb6ee1d161ff177134478f42c56484f051
+  # aql-lang/aql @ main, 2026-06-24 — the latest commit when this module
+  # was written. Pinned to the exact commit it is verified against: the
+  # build where all five suites interpret and compile (byte compiler) to
+  # identical output.
+  AQL_REF: f5e590f1418ef2b4f5c6179321a89b5723b63201
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out bloom-filter
+      - name: Check out sort
         uses: actions/checkout@v4
 
       - name: Set up Go
@@ -67,31 +68,50 @@ jobs:
       # Each suite ends with `0 test.fail-count end assert.equal`, so a
       # failure makes aql exit non-zero and fails the step.
       - name: Unit tests (direct)
-        run: aql test/bloom_unit_test.aql
+        run: aql test/sort_unit_test.aql
 
       - name: Unit tests (spec format)
-        run: aql test/bloom_unit_spec.aql
+        run: aql test/sort_unit_spec.aql
 
       - name: Property tests (direct)
-        run: aql test/bloom_prop_test.aql
+        run: aql test/sort_prop_test.aql
 
       - name: Property tests (spec format)
-        run: aql test/bloom_prop_spec.aql
+        run: aql test/sort_prop_spec.aql
 
       - name: Smoke test
-        run: aql test/bloom_smoke_test.aql
+        run: aql test/sort_smoke_test.aql
 
-      # Advisory static check — NOT a gate. `aql check` is a structural type
-      # checker, but this library exports its words by reference (`make-bloom/r`,
-      # …) and dispatches dynamically, so the checker can't trace those exports
-      # and reports false `unused_def`/`no_signature` diagnostics on code the
-      # suites prove correct. We run it with `--soft` (always exits 0) and
-      # `continue-on-error` so the diagnostics surface in the log for a human to
-      # skim, without ever failing the build. The runnable suites above are the
-      # real gate.
+      # Advisory static check — NOT a gate. `aql check`'s static analysis
+      # has known false positives on first-class function values, and this
+      # library threads comparator FUNCTIONS through every sort (and uses a
+      # recursive radix-msd), so the checker flags a handful of those call
+      # sites even though the interpreter and the byte compiler both run and
+      # agree. Run with `--soft` + `continue-on-error` so the diagnostics
+      # surface without failing the build. The real guarantee — interpreter
+      # == byte compiler — is gated by the `divergence` job below.
       - name: Static check (advisory, non-gating)
         continue-on-error: true
-        run: aql check --soft bloom.aql
+        run: aql check --soft sort.aql
+
+  # Gating guard: every suite must interpret cleanly AND match under the
+  # byte compiler (`aql --compile`). The `aql check` surface is reported but
+  # ADVISORY (see the note above and test/divergence/README.md). run.sh
+  # builds its own aql (same pinned ref, via codeload tarball) and is
+  # self-contained.
+  divergence:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sort
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: interpreter / byte-compiler agreement (check advisory)
+        run: test/divergence/run.sh
 
   # Lightweight guard for the agent-skill packaging and the pinned-ref single
   # source of truth (no aql needed). The plugin must bundle its own copy of the
@@ -101,13 +121,13 @@ jobs:
   consistency:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out bloom-filter
+      - name: Check out sort
         uses: actions/checkout@v4
 
       - name: SKILL.md copies are in sync
         run: |
-          canonical=.claude/skills/bloom-filter-aql/SKILL.md
-          bundled=plugins/bloom-filter-aql/skills/bloom-filter-aql/SKILL.md
+          canonical=.claude/skills/sort-aql/SKILL.md
+          bundled=plugins/sort-aql/skills/sort-aql/SKILL.md
           if ! diff -u "$canonical" "$bundled"; then
             echo "::error file=$bundled::Plugin skill has drifted from $canonical"
             echo "Fix by copying the canonical skill over the bundled one:"
@@ -119,7 +139,7 @@ jobs:
       - name: JSON manifests are valid
         run: |
           for j in .claude-plugin/marketplace.json \
-                   plugins/bloom-filter-aql/.claude-plugin/plugin.json \
+                   plugins/sort-aql/.claude-plugin/plugin.json \
                    api.json; do
             if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$j"; then
               echo "ok: $j"
@@ -131,9 +151,10 @@ jobs:
 
       # The pinned aql commit lives in several files; they must agree or a
       # session/CI builds a different interpreter than the one this library is
-      # verified against (the exact drift that bit the trie sibling repo).
-      # .github/workflows/test.yml's env.AQL_REF (full 40-char) is the single source of truth;
-      # api.json stores a short prefix, so compare by prefix.
+      # verified against. This workflow's env.AQL_REF (full 40-char) is the
+      # single source of truth; api.json stores a short prefix, so compare by
+      # prefix; test/divergence/run.sh carries its own AQL_BYTECODE_REF that
+      # must match too.
       - name: Pinned aql ref is consistent across files
         run: |
           ref='${{ env.AQL_REF }}'
@@ -141,6 +162,11 @@ jobs:
           hook_ref=$(grep -oE 'AQL_REF=[0-9a-f]{7,40}' .claude/hooks/session-start.sh | head -1 | cut -d= -f2)
           if [ "$hook_ref" != "$ref" ]; then
             echo "::error file=.claude/hooks/session-start.sh::AQL_REF=$hook_ref != .github/workflows/test.yml AQL_REF=$ref"
+            fail=1
+          fi
+          div_ref=$(grep -oE 'AQL_BYTECODE_REF=[0-9a-f]{7,40}' test/divergence/run.sh | head -1 | cut -d= -f2)
+          if [ "$div_ref" != "$ref" ]; then
+            echo "::error file=test/divergence/run.sh::AQL_BYTECODE_REF=$div_ref != .github/workflows/test.yml AQL_REF=$ref"
             fail=1
           fi
           api_ref=$(python3 -c "import json;print(json.load(open('api.json'))['aql_ref'])")

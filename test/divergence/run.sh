@@ -19,7 +19,7 @@
 # through every sort, and the checker flags a handful of those call sites and
 # the radix-msd self-recursion even though the interpreter and the byte
 # compiler both run and agree. (The upstream bloom template likewise runs
-# `aql check` as advisory; see ci/test.yml.) The real correctness guarantee is
+# `aql check` as advisory; see .github/workflows/test.yml.) The real correctness guarantee is
 # interpreter == byte compiler, which IS gating.
 #
 # This harness builds its OWN aql at the ref below (it equals the library's

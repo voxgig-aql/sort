@@ -37,9 +37,8 @@ LICENSE                       MIT
 plugins/<lib>-aql/
   .claude-plugin/plugin.json  plugin manifest
   skills/<lib>-aql/SKILL.md   BUNDLED copy of the skill (must equal the canonical one)
-ci/
-  test.yml                    GitHub Actions: build aql, run every suite + consistency job
-  README.md                   why the workflow lives here pending promotion to .github/workflows/
+.github/workflows/
+  test.yml                    GitHub Actions: build aql, run every suite + divergence + consistency jobs
 docs/                         Diátaxis docs: tutorial, how-to, reference, explanation
 test/
   <lib>_unit_test.aql         example-based unit tests — imperative (Test.test)
@@ -111,19 +110,16 @@ here is `sort` / `Sort`.
 8. **SessionStart hook** — in `.claude/hooks/session-start.sh`, set the smoke
    path to `test/<lib>_smoke_test.aql`. Set `AQL_REF` to your pinned commit
    (same value as the CI workflow’s `env.AQL_REF`).
-9. **CI** — in the workflow (`ci/test.yml`, pending promotion to
-   `.github/workflows/`), set `env.AQL_REF`, list your suites with clear step
-   labels, point the advisory check at `<lib>.aql`, and update the
-   `consistency` job’s plugin paths.
+9. **CI** — in the workflow (`.github/workflows/test.yml`), set `env.AQL_REF`,
+   list your suites with clear step labels, point the advisory check at
+   `<lib>.aql`, and update the `consistency` job’s plugin paths.
 10. **Docs** — rewrite `docs/*` for your domain; keep the four-mode structure
     and both the install and run-the-tests anchors.
 11. **`README.md`** — rewrite for your library (drop the “Using this as a
     template” pointer).
 12. **Delete `TEMPLATE.md`** (this file).
 13. **CI** — a repo created with “Use this template” inherits the workflow and
-    runs it on the first push/PR (just enable Actions for the new repo; if the
-    workflow still lives in `ci/`, promote it to `.github/workflows/` first —
-    see `ci/README.md`).
+    runs it on the first push/PR (just enable Actions for the new repo).
 
 When the rename is done, `for f in test/*.aql; do aql "$f"; done` should end
 every suite with `all green`.

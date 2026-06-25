@@ -324,7 +324,7 @@ lives:
 These surface even when checking a **test file**, transitively through the
 imported `sort.aql`. There is no way to reach zero `check` errors without
 contorting correct code, so the project treats `check` as **advisory**: the
-divergence harness (`test/divergence/run.sh`) and CI (`ci/test.yml`) gate on
+divergence harness (`test/divergence/run.sh`) and CI (`.github/workflows/test.yml`) gate on
 **interpreter == byte compiler** instead — which passed for all five suites
 and all 25 algorithms. The box pattern ([§1.2](#12-the-def-cf-compr-workaround-trips-the-static-checker)) already removed the largest
 cluster; what remains is a handful of genuine false positives.

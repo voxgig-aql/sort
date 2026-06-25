@@ -32,7 +32,8 @@ recursive `radix-msd`. The checker flags a handful of those call sites even
 though the interpreter and the byte compiler both run them and agree. Gating
 on `check` would block a library that is provably correct, so the harness
 surfaces the count (`advisory(N)`) without failing. (The CI workflow likewise
-runs `aql check --soft` on the library as advisory — see `ci/test.yml`.)
+runs `aql check --soft` on the library as advisory — see
+`.github/workflows/test.yml`.)
 
 ## Running it
 
@@ -75,9 +76,8 @@ the worst failure mode is slow, not wrong").
 
 ### Wiring it into CI
 
-`run.sh` is self-contained, so a gating job is one block (it is already in
-`ci/test.yml`, pending promotion to `.github/workflows/` by a token with
-`workflow` scope):
+`run.sh` is self-contained, so a gating job is one block (it is already wired
+into `.github/workflows/test.yml`):
 
 ```yaml
   divergence:

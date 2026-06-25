@@ -38,9 +38,6 @@ mistakes to avoid. Every example there is verified against the pinned
 - AQL-runtime gotchas discovered while building this library are captured
   inline as code comments in `sort.aql` and in AGENTS.md's "Common
   mistakes". The pinned aql commit is single-sourced in the CI workflow's
-  `AQL_REF`; a CI job fails if the hook or `api.json` drift from it. The
-  workflow currently lives in `ci/test.yml` pending promotion to
-  `.github/workflows/` (this session can't push workflow files — see
-  `ci/README.md`); the stale `.github/workflows/test.yml` still on `main`
-  is superseded by it.
+  `AQL_REF` (`.github/workflows/test.yml`, currently aql `f5e590f`); a CI
+  job fails if the hook or `api.json` drift from it.
 - Forking this repo to start a new AQL library? See `TEMPLATE.md`.
