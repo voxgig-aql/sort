@@ -8,7 +8,7 @@ description: Use when writing or editing AQL code that calls the Sort sorting li
 Every well-known sorting algorithm, over every AQL type, driven by
 composable **comparators**. Public surface = the `Sort` namespace. Sorts
 return a **new** sorted `List` and never mutate their input. Everything
-below is verified against `aql @ f5e590f`.
+below is verified against `aql @ c5fbb04`.
 
 ## Import
 
