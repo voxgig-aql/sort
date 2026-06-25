@@ -1,6 +1,6 @@
-name: bloom-filter
+name: sort
 major: 0
-minor: 2
+minor: 1
 patch: 0
-main: bloom.aql
-files: [bloom.aql]
+main: sort.aql
+files: [sort.aql]

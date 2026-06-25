@@ -1,11 +1,11 @@
-# Tutorial: your first bloom filter
+# Tutorial: your first sort
 
 This is a hands-on lesson. By the end you will have built a small AQL
-script that tracks which usernames it has seen, queried it, and watched
-a false positive appear. You need no prior knowledge of bloom filters —
-just a working `aql` binary (see
-[How-to → Install and run](how-to.md#install-and-run-aql)) and this
-repository checked out.
+script that sorts numbers, sorts strings, sorts by a comparator you write
+yourself, and sorts a list of filenames into *natural* (alphanumeric)
+order. You need no prior knowledge of this library — just a working `aql`
+binary (see [How-to → Install and run](how-to.md#install-and-run-aql))
+and this repository checked out.
 
 > **AI agents:** for the calling convention and a verified cheat-sheet,
 > see [AGENTS.md](../AGENTS.md).
@@ -15,160 +15,179 @@ build it up in pieces and run it after each step.
 
 ---
 
-## Step 1 — import the module and make a filter
+## Step 1 — import the module and sort some numbers
 
-Create a file `seen.aql` next to `bloom.aql` with this content:
+Create a file `play.aql` next to `sort.aql` with this content:
 
 ```aql
-import "./bloom.aql"
+import "./sort.aql"
 
 # Print one value per statement, fully grouped — `print (value) end` —
 # and output appears in source order. (Chained `(a) print (b) print`
 # pairs print out of order, because print collects a forward argument.)
 
-def seen ({n: 10000, p: 0.01} Bloom.make end)
-print (`params:      ${(seen Bloom.params end)}`) end
+print (([5 3 8 1 9 2] Sort.quick Sort.by-number end)) end
 ```
 
-`Bloom.make` takes an options map: `n` is how many distinct items you
-expect (10 000), and `p` is the false-positive rate you will tolerate
-(1 %). Run it:
+Read that call left to right: the **data comes first** (`[5 3 8 1 9 2]`),
+then the verb (`Sort.quick`), then the **comparator** that decides the
+order (`Sort.by-number`), and the whole call is terminated with `end`.
+This is AQL's universal shape — receiver first, then the word, then any
+extra arguments. There is no `sort(list, cmp)` and no `list.sort(cmp)`
+here. Run it:
 
 ```console
-$ aql seen.aql
-params:      {k:7 m:95851 n:10000 p:0.01}
+$ aql play.aql
+[1, 2, 3, 5, 8, 9]
 ```
 
-The filter computed two values for you: `m`, the number of bits it will
-use (95 851), and `k`, the number of hash functions (7). You never set
-those directly — they fall out of `n` and `p`. (Curious how? See
-[Explanation → Sizing](explanation.md#sizing-the-filter).)
+`Sort.by-number` is a *comparator*: a little function that, given two
+items, says which comes first. `Sort.quick` is the algorithm — quicksort.
+The library ships a whole catalogue of algorithms (merge, heap, tim,
+insertion, …); they all take the same shape, so you can swap `Sort.quick`
+for `Sort.merge` and get the same answer. The result is a **new** sorted
+list — your original `[5 3 8 1 9 2]` is untouched (more on that in
+Step 5).
 
 ---
 
-## Step 2 — add some items
+## Step 2 — sort strings instead
 
-Add three usernames. Each `add` call mutates the filter in place; we
-bind the returned filter to throwaway names (`_1`, `_2`, `_3`) just to
-keep the stack clean. Append below the `params:` line:
-
-```aql
-def _1 (seen Bloom.add "ada" end)
-def _2 (seen Bloom.add "grace" end)
-def _3 (seen Bloom.add "alan" end)
-```
-
-Nothing prints yet — `add` just records the items. Note the `end` after
-each call: AQL words look ahead for arguments, and `end` marks where the
-call stops. Forget it and the next token gets swallowed as an argument.
-
----
-
-## Step 3 — ask what the filter has seen
-
-Now query it. `Bloom.contains` returns a Boolean:
+The only thing that changes when you sort a different kind of data is the
+comparator. For strings, reach for `Sort.by-string`, which orders them
+lexicographically (by character code). Append below the first line:
 
 ```aql
-print (`ada seen?    ${(seen Bloom.contains "ada" end)}`) end
-print (`grace seen?  ${(seen Bloom.contains "grace" end)}`) end
-print (`linus seen?  ${(seen Bloom.contains "linus" end)}`) end
-```
-
-Run the whole file:
-
-```console
-$ aql seen.aql
-params:      {k:7 m:95851 n:10000 p:0.01}
-ada seen?    true
-grace seen?  true
-linus seen?  false
-```
-
-`ada` and `grace` were added, so they read `true`. `linus` was not, and
-reads `false`. That `false` is a *guarantee*: a bloom filter never
-forgets something you added, so a "no" is always correct.
-
----
-
-## Step 4 — estimate how many items you've added
-
-The filter can estimate its own cardinality without storing the items.
-Add:
-
-```aql
-print (`distinct ~   ${(seen Bloom.count end)}`) end
+print ((["pear" "Apple" "fig"] Sort.merge Sort.by-string end)) end
 ```
 
 ```console
-$ aql seen.aql
+$ aql play.aql
+[1, 2, 3, 5, 8, 9]
+["Apple", "fig", "pear"]
+```
+
+`"Apple"` sorts first because an uppercase `A` (code point 65) comes
+before the lowercase letters (`f`, `p` are 102, 112). That is plain
+lexicographic order — we will fix the case-sensitivity in a moment. Note
+the `end` after every call: AQL words look ahead for arguments, and `end`
+marks where the call stops. Forget it and the next token gets swallowed
+as an argument.
+
+---
+
+## Step 3 — write your own comparator
+
+The built-in comparators cover the common orders, but the real power is
+that *you* can supply the ordering. A comparator is a two-argument
+function returning a negative / zero / positive Integer when the first
+item should sort before / equal to / after the second — exactly the
+contract of the built-in `cmp`. Let's order strings by **length** instead
+of alphabetically. Add:
+
+```aql
+def by-length fn [
+  [b:Any a:Any] [Integer] [ (a size) (b size) cmp ]
+]
+
+print ((["bbb" "a" "cc"] Sort.merge by-length/r end)) end
+```
+
+```console
+$ aql play.aql
 ...
-distinct ~   3
+["a", "cc", "bbb"]
 ```
 
-We added three distinct items and the estimate is `3`. `count` is an
-*approximation* (it reads the bit pattern, not a stored list), so on a
-fuller filter expect it to drift a little — see
-[Explanation → Estimating cardinality](explanation.md#estimating-cardinality).
+Two things to notice. First, the body is written in terms of `a` (the
+earlier item) and `b` (the later one): we compare their sizes with the
+native `cmp`, so a shorter string sorts first. Second — and this is the
+one rule that trips people up — we pass the comparator as `by-length/r`,
+**with a `/r` suffix**. A bare word would *call* `by-length` on the spot;
+`/r` hands it over as a value for the sort to call later. (Comparators
+from the `Sort` namespace, like `Sort.by-number`, are already values, so
+they need no `/r`.)
 
 ---
 
-## Step 5 — watch false positives, and see that they track `p`
+## Step 4 — natural (alphanumeric) order
 
-This is the defining behaviour of a bloom filter, and it is worth seeing
-once. A false positive is an item you never added that nonetheless reads
-`true`, because other items happened to set all of its bits. The whole
-point of `p` is that you get to choose how often this happens.
-
-Let's measure it. Create a second file `falsepos.aql` that sizes a
-filter for 50 items at a 10 % rate, fills it with exactly those 50
-items, then queries 1 000 keys that were never added:
+Here is the headline utility. Imagine sorting a list of filenames:
 
 ```aql
-import "./bloom.aql"
-
-def bf ({n: 50, p: 0.1} Bloom.make end)
-print (`params: ${(bf Bloom.params end)}`) end
-
-# add exactly the 50 items it was sized for
-def _ (iota 50 each [ var [[i] bf Bloom.add `item-${i}` end 0 ] ])
-
-# query 1000 keys that were never added
-def hits (iota 1000 each [
-  var [[i]
-    def key `absent-${i}`
-    if (bf Bloom.contains key end) [1] [0]
-  ]
-])
-print (`false positives among 1000 un-added keys: ${(0 hits [add end] fold)}`) end
+print ((["file10" "file2" "file1"] Sort.merge Sort.by-string end)) end
 ```
 
 ```console
-$ aql falsepos.aql
-params: {k:3 m:240 n:50 p:0.1}
-false positives among 1000 un-added keys: 97
+$ aql play.aql
+...
+["file1", "file10", "file2"]
 ```
 
-Of the 1 000 keys we never added, 903 correctly read `false` and only
-97 — about 10 % — were false positives, right at the 10 % we asked
-for. Loaded to the capacity it was built for, the filter delivers the
-error rate you specified. Size it for fewer items (smaller `n`) or
-overfill it and that rate climbs; the math behind the trade-off is in
-[Explanation → Sizing](explanation.md#sizing-the-filter).
+That is almost certainly *not* what you want: `"file10"` lands before
+`"file2"` because, character by character, `"1"` comes before `"2"`. Swap
+in `Sort.natural`, which compares embedded runs of digits by their
+**numeric value**:
+
+```aql
+print ((["file10" "file2" "file1"] Sort.merge Sort.natural end)) end
+```
+
+```console
+$ aql play.aql
+...
+["file1", "file2", "file10"]
+```
+
+Now `file2` precedes `file10`, because `2 < 10` as numbers. This works
+for digit runs anywhere in the string — `"x9"` sorts before `"x10"` too.
+
+---
+
+## Step 5 — sorts return a new list
+
+One last idea that shapes how you use the library: a sort never modifies
+its input. It returns a brand-new sorted list and leaves the original
+alone. See it directly:
+
+```aql
+def original [3 1 2]
+def sorted (original Sort.quick Sort.by-number end)
+print (original) end
+print (sorted) end
+```
+
+```console
+$ aql play.aql
+...
+[3, 1, 2]
+[1, 2, 3]
+```
+
+`original` is still `[3 1 2]`; `sorted` is the ordered copy. So always
+*bind the result* of a sort (`def sorted (… )`) — there is no in-place
+variant that mutates the list you passed in. Why the library is built
+this way is covered in
+[Explanation → Why sorts return new lists](explanation.md#why-sorts-return-new-lists).
 
 ---
 
 ## What you've learned
 
-- `Bloom.make` sizes a filter from a target `n` and `p`.
-- `Bloom.add` records items; `Bloom.contains` queries them.
-- A `false` from `contains` is always correct; a `true` is "probably,"
-  with a tunable false-positive rate.
-- `Bloom.count` estimates how many distinct items you added.
-- Under-sizing a filter produces false positives — by design.
+- A sort is written **data first**: `list Sort.<algo> comparator end`.
+- The **comparator** decides the order: `Sort.by-number`,
+  `Sort.by-string`, `Sort.natural`, and friends — or one you write.
+- Pass a `Sort.*` comparator bare; pass your own comparator word (or the
+  built-in `cmp`) with a **`/r`** suffix.
+- All the comparison algorithms (`quick`, `merge`, `heap`, …) share one
+  shape, so they are interchangeable.
+- Sorts return a **new** list; the input is never mutated.
 
 ## Where to go next
 
-- Solve specific problems with the [How-to guides](how-to.md) — sizing,
-  merging, persistence, running the tests.
-- Look up exact signatures in the [Reference](reference.md).
-- Understand the machinery in the [Explanation](explanation.md).
+- Solve specific problems with the [How-to guides](how-to.md) — custom
+  orders, descending, by-key, distribution sorts, error handling, running
+  the tests.
+- Look up every algorithm and comparator in the [Reference](reference.md).
+- Understand the comparator-driven design in the
+  [Explanation](explanation.md).

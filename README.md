@@ -1,19 +1,16 @@
-# bloom-filter
+# sort
 
-A small, dependency-light **bloom filter** implemented in
-[AQL](https://github.com/aql-lang/aql) — a probabilistic set that
-answers *"have I seen this item?"* in far less memory than storing the
-items, with no false negatives and a false-positive rate you choose up
-front.
+A dependency-light **sorting library** implemented in
+[AQL](https://github.com/aql-lang/aql) — every well-known sorting
+algorithm, over every AQL type, driven by composable **comparators**.
+Sorts return a new sorted list and never mutate their input.
 
 ```aql
-import "./bloom.aql"
+import "./sort.aql"
 
-def seen ({n: 10000, p: 0.01} Bloom.make end)
-def _ (seen Bloom.add "ada" end)
-
-print ((seen Bloom.contains "ada" end)) end     # => true
-print ((seen Bloom.contains "linus" end)) end   # => false
+print (([5 3 8 1] Sort.quick Sort.by-number end)) end                # => [1, 3, 5, 8]
+print ((["file10" "file2" "file1"] Sort.merge Sort.natural end)) end # => ['file1', 'file2', 'file10']
+print (([170 45 75 2 802 24] Sort.radix-lsd end)) end                # => [2, 24, 45, 75, 170, 802]
 ```
 
 > **Forking this to build a new AQL library?** This repo is a GitHub
@@ -24,7 +21,28 @@ print ((seen Bloom.contains "linus" end)) end   # => false
 > **[AGENTS.md](AGENTS.md)** first — the exact AQL calling convention,
 > verified idioms, and common mistakes. (Claude Code auto-loads it via
 > `CLAUDE.md`; a portable skill lives in
-> [`.claude/skills/bloom-filter-aql`](.claude/skills/bloom-filter-aql/SKILL.md).)
+> [`.claude/skills/sort-aql`](.claude/skills/sort-aql/SKILL.md).)
+
+## What you get
+
+- **Comparison sorts** — `quick`, `merge` (stable), `heap`, `intro`,
+  `tim` (stable), `insertion`, `selection`, `bubble`, `shell`, `comb`,
+  `cocktail`, `gnome`, `cycle`, `odd-even`, `pancake`, `bitonic`.
+- **Distribution sorts** (Integers, no comparator) — `counting`,
+  `pigeonhole`, `radix-lsd`, `radix-msd`, `bucket`, `bead`.
+- **Joke / educational sorts** — `bogo`, `stooge`, `slow`.
+- **Comparators** — `by-number`, `by-string`, `by-boolean`,
+  `by-generic`, `natural` (alphanumeric, so `"file2" < "file10"`),
+  `case-insensitive`, plus the combinators `reverse` and `by-key`.
+
+Sort anything by supplying a comparator — a two-argument function
+returning a negative/zero/positive `Integer`, the same contract as the
+built-in `cmp`:
+
+```aql
+def by-len fn [[b:Any a:Any] [Integer] [ (a size) (b size) cmp ]]
+print ((["bbb" "a" "cc"] Sort.merge by-len/r end)) end   # => ['a', 'cc', 'bbb']
+```
 
 ## Documentation
 
@@ -33,29 +51,27 @@ modes, each serving a different need. Start wherever your need is:
 
 | | Mode | Read this when you want to… |
 |--|------|----------------------------|
-| 🎓 | **[Tutorial](docs/tutorial.md)** | learn by building your first filter step by step |
-| 🔧 | **[How-to guides](docs/how-to.md)** | accomplish a specific task (size, merge, persist, test…) |
-| 📖 | **[Reference](docs/reference.md)** | look up exact words, signatures, and return types |
-| 💡 | **[Explanation](docs/explanation.md)** | understand how it works and why it's built this way |
+| 🎓 | **[Tutorial](docs/tutorial.md)** | learn by sorting your first list step by step |
+| 🔧 | **[How-to guides](docs/how-to.md)** | accomplish a specific task (custom order, natural sort, by-key…) |
+| 📖 | **[Reference](docs/reference.md)** | look up exact words, return types, stability, complexity |
+| 💡 | **[Explanation](docs/explanation.md)** | understand the comparator-driven design and why it's built this way |
 
-New here? Read the [Tutorial](docs/tutorial.md). Already know bloom
-filters and just want the API? Jump to the [Reference](docs/reference.md).
+New here? Read the [Tutorial](docs/tutorial.md). Already know your
+algorithms and just want the API? Jump to the [Reference](docs/reference.md).
 
-## The `Bloom` API at a glance
+## The `Sort` API at a glance
 
-| Word | Purpose |
+| Call | Purpose |
 |------|---------|
-| `{n, p} Bloom.make`      | build a filter sized for capacity `n` at false-positive rate `p` |
-| `bf Bloom.add item`      | insert an item (mutates `bf`) |
-| `bf Bloom.contains item` | test membership → Boolean |
-| `bf Bloom.count`         | estimate distinct items added |
-| `bf Bloom.params`        | report `{n, p, m, k}` |
-| `a Bloom.merge b`        | union two filters with matching `(m, k)` |
-| `bf Bloom.encode`        | serialize to a snapshot string |
-| `text Bloom.decode`      | rebuild a filter from a snapshot string |
+| `list Sort.<algo> comparator` | sort with a comparison algorithm → new sorted List |
+| `list Sort.<algo>`            | sort Integers with a distribution sort (no comparator) |
+| `a b Sort.by-number`          | a comparator: negative / zero / positive Integer |
+| `comp Sort.reverse`           | a comparator that reverses `comp` (descending) |
+| `keyfn Sort.by-key`           | a comparator that orders by a derived key |
+| `list Sort.is-sorted comparator` | test whether a list is ordered → Boolean |
 
-Full details, including the calling convention (every call ends with
-`end`), are in the [Reference](docs/reference.md).
+Every call ends with `end` (or is wrapped in parens). Full details are in
+the [Reference](docs/reference.md).
 
 ## For AI coding agents
 
@@ -67,14 +83,14 @@ To make that guidance available in *another* project that uses this
 library, install the bundled skill either way:
 
 - **Copy the skill** — drop
-  [`.claude/skills/bloom-filter-aql/`](.claude/skills/bloom-filter-aql/SKILL.md)
+  [`.claude/skills/sort-aql/`](.claude/skills/sort-aql/SKILL.md)
   into that project's `.claude/skills/` (or your `~/.claude/skills/`). It
-  loads on demand whenever Bloom calls appear.
+  loads on demand whenever `Sort` calls appear.
 - **Install the plugin** — this repo is also a plugin marketplace:
 
   ```
-  /plugin marketplace add voxgig-aql/bloom-filter
-  /plugin install bloom-filter-aql@voxgig-aql
+  /plugin marketplace add voxgig-aql/sort
+  /plugin install sort-aql@voxgig-aql
   ```
 
 Working inside *this* repo, Claude Code picks the guidance up
@@ -84,21 +100,21 @@ skill.
 ## Project layout
 
 ```
-bloom.aql                  the library (the Bloom namespace)
-AGENTS.md                  agent guide: how to call this library correctly
-test/bloom_unit_test.aql   example-based unit tests — direct (Test.test)
-test/bloom_unit_spec.aql   example-based unit tests — declarative spec format
-test/bloom_prop_test.aql   property-based tests — direct (Test.check-prop)
-test/bloom_prop_spec.aql   property-based tests — declarative spec format
-test/bloom_smoke_test.aql  end-to-end smoke run over every public word
-docs/                      Diátaxis documentation (above)
-dx-report.md               developer-experience notes (current pin: aql @ 407feda)
-proposals/                 language proposals raised from this module's DX
+sort.aql                  the library (the Sort namespace: comparators + algorithms)
+AGENTS.md                 agent guide: how to call this library correctly
+test/sort_unit_test.aql   example-based unit tests — direct (Test.test)
+test/sort_unit_spec.aql   example-based unit tests — declarative spec format
+test/sort_prop_test.aql   property-based tests — direct (Test.check-prop)
+test/sort_prop_spec.aql   property-based tests — declarative spec format
+test/sort_smoke_test.aql  end-to-end smoke run over every public word
+test/divergence/          three-surface guard (interpreter · check · byte compiler)
+docs/                     Diátaxis documentation (above)
 ```
 
 Test files follow a consistent naming convention: `_test.aql` for
 direct tests (unit or property), `_spec.aql` for declarative specs (unit
-or property).
+or property). The keystone property is **cross-agreement** — every
+algorithm must return the same ordering as the stable `Sort.merge`.
 
 ## Running it
 
@@ -107,11 +123,11 @@ Build the `aql` interpreter, then run any script or test — see
 [Run the tests](docs/how-to.md#run-the-tests):
 
 ```bash
-aql test/bloom_unit_test.aql   # unit tests — direct
-aql test/bloom_unit_spec.aql   # unit tests — declarative spec format
-aql test/bloom_prop_test.aql   # property tests — direct
-aql test/bloom_prop_spec.aql   # property tests — declarative spec format
-aql test/bloom_smoke_test.aql  # end-to-end smoke run
+aql test/sort_unit_test.aql   # unit tests — direct
+aql test/sort_unit_spec.aql   # unit tests — declarative spec format
+aql test/sort_prop_test.aql   # property tests — direct
+aql test/sort_prop_spec.aql   # property tests — declarative spec format
+aql test/sort_smoke_test.aql  # end-to-end smoke run
 ```
 
 A GitHub Actions workflow

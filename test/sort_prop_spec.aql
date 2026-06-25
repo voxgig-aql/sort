@@ -1,0 +1,125 @@
+# Property-based tests for sort — DECLARATIVE SPEC FORMAT.
+#
+# The spec-format sibling of the direct-code `test/sort_prop_test.aql`.
+# Each entry is a `PropertySpec` built by `Test.prop` and run by
+# `Test.run-property`; the generator and property bodies are ordinary
+# code, so (unlike the example spec) these CAN drive the comparison sorts
+# that take a comparator argument.
+#
+#   Test.prop NAME  [ GEN-BODY ]  [ PROP-BODY ]
+#
+# GEN-BODY runs with `r` bound to the random source and leaves one value
+# (the input list). PROP-BODY takes that list and returns a Boolean.
+#
+# Run:
+#   aql test/sort_prop_spec.aql
+
+import "aql:test" end
+import "./sort.aql" end
+
+
+# --- reporting helper (one PropertyResult → a pass/fail line) --------
+
+def report fn [
+  [res:Map] [] [
+    def ok (res "ok" get)
+    def nm (res "name" get)
+    def msg (if ok
+      [`ok   ${nm} (${(res "runs" get)} runs)`]
+      [`FAIL ${nm}  failing-input: ${(res "failing-input" get)}`])
+    msg print
+  ]
+]
+
+
+# --- the spec suite, built as data ----------------------------------
+
+def specs [
+
+  # Keystone: every comparison sort agrees with the stable merge sort.
+  (Test.prop "all-comparison-sorts-agree-with-merge"
+    [ iota (r.int 0 7) each [ var [[i] r.int 0 12 ] ] ]
+    [ var [[lst]
+        def want (lst Sort.merge Sort.by-number end)
+        def results [
+          (lst Sort.bubble    Sort.by-number end)
+          (lst Sort.insertion Sort.by-number end)
+          (lst Sort.selection Sort.by-number end)
+          (lst Sort.gnome     Sort.by-number end)
+          (lst Sort.cocktail  Sort.by-number end)
+          (lst Sort.comb      Sort.by-number end)
+          (lst Sort.shell     Sort.by-number end)
+          (lst Sort.odd-even  Sort.by-number end)
+          (lst Sort.cycle     Sort.by-number end)
+          (lst Sort.pancake   Sort.by-number end)
+          (lst Sort.bitonic   Sort.by-number end)
+          (lst Sort.quick     Sort.by-number end)
+          (lst Sort.heap      Sort.by-number end)
+          (lst Sort.intro     Sort.by-number end)
+          (lst Sort.tim       Sort.by-number end)
+        ]
+        def ok (make Array [true])
+        def _ (results each [ var [[r] if ((r deq want) not) [ ok set 0 false end 0 ] [0] ] ])
+        ok get 0
+    ] ])
+
+  # Distribution sorts agree with merge on non-negative integers.
+  (Test.prop "distribution-sorts-agree-with-merge"
+    [ iota (r.int 0 8) each [ var [[i] r.int 0 40 ] ] ]
+    [ var [[lst]
+        def want (lst Sort.merge Sort.by-number end)
+        def results [
+          (lst Sort.counting   end)
+          (lst Sort.pigeonhole end)
+          (lst Sort.radix-lsd  end)
+          (lst Sort.radix-msd  end)
+          (lst Sort.bucket     end)
+          (lst Sort.bead       end)
+        ]
+        def ok (make Array [true])
+        def _ (results each [ var [[r] if ((r deq want) not) [ ok set 0 false end 0 ] [0] ] ])
+        ok get 0
+    ] ])
+
+  # The output of a sort is ordered.
+  (Test.prop "output-is-ordered"
+    [ iota (r.int 0 14) each [ var [[i] r.int 0 50 ] ] ]
+    [ var [[lst] (lst Sort.quick Sort.by-number end) Sort.is-sorted Sort.by-number end ] ])
+
+  # Sorting is idempotent.
+  (Test.prop "sort-is-idempotent"
+    [ iota (r.int 0 14) each [ var [[i] r.int 0 50 ] ] ]
+    [ var [[lst]
+        def once  (lst  Sort.merge Sort.by-number end)
+        def twice (once Sort.merge Sort.by-number end)
+        (once deq twice)
+    ] ])
+
+  # Reversed comparator yields the reversed ordering.
+  (Test.prop "reverse-comparator-reverses-output"
+    [ iota (r.int 0 12) each [ var [[i] r.int 0 100 ] ] ]
+    [ var [[lst]
+        def asc  (lst Sort.heap Sort.by-number end)
+        def desc (lst Sort.heap (Sort.by-number Sort.reverse) end)
+        (desc deq (asc reverse))
+    ] ])
+
+]
+
+
+# --- run every spec ------------------------------------------------
+
+def _ (specs each [
+  var [[s]
+    (s Test.run-property end) report
+    0
+  ]
+])
+
+
+# --- summary -------------------------------------------------------
+
+"---" print
+"fail count: " print Test.fail-count end print
+0 Test.fail-count end Assert.equal end
+"all green" print
