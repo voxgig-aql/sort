@@ -304,22 +304,22 @@ def selection-sort fn [
 #
 # These helpers mutate the working Array in place and RETURN it, so a
 # recursive call can be `def`-bound (a void call cannot). The comparator
-# is threaded as a one-cell Array "box" (`make Array [comp/r]`): parking a
-# Function *parameter* with `/r` is one-shot, and passing the box (a plain
-# Array) sidesteps that and keeps the static checker happy. Read it back
-# with `def cmpf (box get 0)` and invoke as `xi xj cmpf`.
+# is threaded directly as the `comp:Function` parameter: invoke it bare
+# (`xi xj comp`) and forward it to recursive calls with `comp/r`. (This
+# parks the parameter with `/r` repeatedly, which once needed a one-cell
+# Array "box" workaround for a `comp/r` frame bug; that bug is fixed
+# upstream, so the box is gone.)
 
 # Quicksort — Lomuto partition on the last element.
 def quick-go fn [
-  [box:Array hi:Integer lo:Integer arr:Array] [Array] [
-    def cmpf (box get 0)
+  [comp:Function hi:Integer lo:Integer arr:Array] [Array] [
     if (lo lt hi) [
       def pivot (arr get hi)
       def ic (make Array [lo])
       def _ (iota (hi sub lo) each [
         var [[t]
           def j (lo add t)
-          def c ((arr get j) pivot cmpf)
+          def c ((arr get j) pivot comp)
           if (c lt 0) [
             def i (ic get 0)
             arr i j swap-at end
@@ -330,8 +330,8 @@ def quick-go fn [
       ])
       def p (ic get 0)
       arr p hi swap-at end
-      def _l (arr lo (p sub 1) box quick-go)
-      def _r (arr (p add 1) hi box quick-go)
+      def _l (arr lo (p sub 1) comp/r quick-go)
+      def _r (arr (p add 1) hi comp/r quick-go)
       arr
     ] [ arr ]
   ]
@@ -341,16 +341,14 @@ def quick-sort fn [
   [comp:Function lst:List] [List] [
     def n (lst size)
     def arr (make Array lst)
-    def box (make Array [comp/r])
-    def _ (if (n gt 1) [ arr 0 (n sub 1) box quick-go ] [ arr ])
+    def _ (if (n gt 1) [ arr 0 (n sub 1) comp/r quick-go ] [ arr ])
     convert List arr
   ]
 ]
 
 # Merge sort (stable) — the cross-check reference implementation.
 def merge-span fn [
-  [box:Array buf:Array hi:Integer mid:Integer lo:Integer arr:Array] [Array] [
-    def cmpf (box get 0)
+  [comp:Function buf:Array hi:Integer mid:Integer lo:Integer arr:Array] [Array] [
     def i (make Array [lo])
     def j (make Array [mid])
     def k (make Array [lo])
@@ -361,7 +359,7 @@ def merge-span fn [
         def take-left (
           if (ii gte mid) [false] [
             if (jj gte hi) [true] [
-              def c ((arr get ii) (arr get jj) cmpf)
+              def c ((arr get ii) (arr get jj) comp)
               (c lte 0)
             ]
           ]
@@ -391,12 +389,12 @@ def merge-span fn [
 ]
 
 def merge-go fn [
-  [box:Array buf:Array hi:Integer lo:Integer arr:Array] [Array] [
+  [comp:Function buf:Array hi:Integer lo:Integer arr:Array] [Array] [
     if ((hi sub lo) gt 1) [
       def mid (lo add ((hi sub lo) div 2))
-      def _l (arr lo mid buf box merge-go)
-      def _r (arr mid hi buf box merge-go)
-      arr lo mid hi buf box merge-span
+      def _l (arr lo mid buf comp/r merge-go)
+      def _r (arr mid hi buf comp/r merge-go)
+      arr lo mid hi buf comp/r merge-span
     ] [ arr ]
   ]
 ]
@@ -406,31 +404,29 @@ def merge-sort fn [
     def n (lst size)
     def arr (make Array lst)
     def buf (make Array lst)
-    def box (make Array [comp/r])
-    def _ (arr 0 n buf box merge-go)
+    def _ (arr 0 n buf comp/r merge-go)
     convert List arr
   ]
 ]
 
 # Heapsort (binary max-heap).
 def sift-down fn [
-  [box:Array n:Integer i:Integer arr:Array] [Array] [
-    def cmpf (box get 0)
+  [comp:Function n:Integer i:Integer arr:Array] [Array] [
     def largest (make Array [i])
     def l ((i mul 2) add 1)
     def r ((i mul 2) add 2)
     def _l (if (l lt n) [
-      def c ((arr get l) (arr get (largest get 0)) cmpf)
+      def c ((arr get l) (arr get (largest get 0)) comp)
       if (c gt 0) [ largest set 0 l end 0 ] [0]
     ] [0])
     def _r (if (r lt n) [
-      def c ((arr get r) (arr get (largest get 0)) cmpf)
+      def c ((arr get r) (arr get (largest get 0)) comp)
       if (c gt 0) [ largest set 0 r end 0 ] [0]
     ] [0])
     def lg (largest get 0)
     def _s (if (lg neq i) [
       arr i lg swap-at end
-      arr lg n box sift-down
+      arr lg n comp/r sift-down
     ] [ arr ])
     arr
   ]
@@ -440,11 +436,10 @@ def heap-sort fn [
   [comp:Function lst:List] [List] [
     def n (lst size)
     def arr (make Array lst)
-    def box (make Array [comp/r])
     def _b (iota (n div 2) each [
       var [[t]
         def i (((n div 2) sub 1) sub t)
-        arr i n box sift-down
+        arr i n comp/r sift-down
         0
       ]
     ])
@@ -453,7 +448,7 @@ def heap-sort fn [
         def hi ((n sub 1) sub t)
         if (hi gt 0) [
           arr 0 hi swap-at end
-          arr 0 hi box sift-down
+          arr 0 hi comp/r sift-down
           0
         ] [0]
       ]
@@ -747,32 +742,31 @@ def gp2lt fn [
 ]
 
 def bitonic-merge fn [
-  [box:Array dir:Boolean cnt:Integer lo:Integer arr:Array] [Array] [
-    def cmpf (box get 0)
+  [comp:Function dir:Boolean cnt:Integer lo:Integer arr:Array] [Array] [
     if (cnt gt 1) [
       def k (cnt gp2lt)
       def _ (iota (cnt sub k) each [
         var [[t]
           def i (lo add t)
-          def c ((arr get i) (arr get (i add k)) cmpf)
+          def c ((arr get i) (arr get (i add k)) comp)
           def wrong (if dir [c gt 0] [c lt 0])
           if wrong [ arr i (i add k) swap-at end 0 ] [0]
         ]
       ])
-      def _l (arr lo k dir box bitonic-merge)
-      def _r (arr (lo add k) (cnt sub k) dir box bitonic-merge)
+      def _l (arr lo k dir comp/r bitonic-merge)
+      def _r (arr (lo add k) (cnt sub k) dir comp/r bitonic-merge)
       arr
     ] [ arr ]
   ]
 ]
 
 def bitonic-go fn [
-  [box:Array dir:Boolean cnt:Integer lo:Integer arr:Array] [Array] [
+  [comp:Function dir:Boolean cnt:Integer lo:Integer arr:Array] [Array] [
     if (cnt gt 1) [
       def m (cnt div 2)
-      def _l (arr lo m (dir not) box bitonic-go)
-      def _r (arr (lo add m) (cnt sub m) dir box bitonic-go)
-      arr lo cnt dir box bitonic-merge
+      def _l (arr lo m (dir not) comp/r bitonic-go)
+      def _r (arr (lo add m) (cnt sub m) dir comp/r bitonic-go)
+      arr lo cnt dir comp/r bitonic-merge
     ] [ arr ]
   ]
 ]
@@ -781,8 +775,7 @@ def bitonic-sort fn [
   [comp:Function lst:List] [List] [
     def n (lst size)
     def arr (make Array lst)
-    def box (make Array [comp/r])
-    def _ (if (n gt 1) [ arr 0 n true box bitonic-go ] [ arr ])
+    def _ (if (n gt 1) [ arr 0 n true comp/r bitonic-go ] [ arr ])
     convert List arr
   ]
 ]
@@ -1217,16 +1210,15 @@ def bogo-sort fn [
 
 # Stooge sort — O(n^2.7), recursive.
 def stooge-go fn [
-  [box:Array hi:Integer lo:Integer arr:Array] [Array] [
-    def cmpf (box get 0)
-    def c ((arr get lo) (arr get hi) cmpf)
+  [comp:Function hi:Integer lo:Integer arr:Array] [Array] [
+    def c ((arr get lo) (arr get hi) comp)
     def _sw (if (c gt 0) [ arr lo hi swap-at end 0 ] [0])
     def len ((hi sub lo) add 1)
     def _r (if (len gt 2) [
       def t (len div 3)
-      def _1 (arr lo (hi sub t) box stooge-go)
-      def _2 (arr (lo add t) hi box stooge-go)
-      def _3 (arr lo (hi sub t) box stooge-go)
+      def _1 (arr lo (hi sub t) comp/r stooge-go)
+      def _2 (arr (lo add t) hi comp/r stooge-go)
+      def _3 (arr lo (hi sub t) comp/r stooge-go)
       arr
     ] [ arr ])
     arr
@@ -1237,23 +1229,21 @@ def stooge-sort fn [
   [comp:Function lst:List] [List] [
     def n (lst size)
     def arr (make Array lst)
-    def box (make Array [comp/r])
-    def _ (if (n gt 1) [ arr 0 (n sub 1) box stooge-go ] [ arr ])
+    def _ (if (n gt 1) [ arr 0 (n sub 1) comp/r stooge-go ] [ arr ])
     convert List arr
   ]
 ]
 
 # Slowsort — "multiply and surrender", recursive, gloriously inefficient.
 def slow-go fn [
-  [box:Array hi:Integer lo:Integer arr:Array] [Array] [
-    def cmpf (box get 0)
+  [comp:Function hi:Integer lo:Integer arr:Array] [Array] [
     if (lo gte hi) [ arr ] [
       def m ((lo add hi) div 2)
-      def _1 (arr lo m box slow-go)
-      def _2 (arr (m add 1) hi box slow-go)
-      def c ((arr get hi) (arr get m) cmpf)
+      def _1 (arr lo m comp/r slow-go)
+      def _2 (arr (m add 1) hi comp/r slow-go)
+      def c ((arr get hi) (arr get m) comp)
       def _sw (if (c lt 0) [ arr hi m swap-at end 0 ] [0])
-      def _3 (arr lo (hi sub 1) box slow-go)
+      def _3 (arr lo (hi sub 1) comp/r slow-go)
       arr
     ]
   ]
@@ -1263,8 +1253,7 @@ def slow-sort fn [
   [comp:Function lst:List] [List] [
     def n (lst size)
     def arr (make Array lst)
-    def box (make Array [comp/r])
-    def _ (if (n gt 1) [ arr 0 (n sub 1) box slow-go ] [ arr ])
+    def _ (if (n gt 1) [ arr 0 (n sub 1) comp/r slow-go ] [ arr ])
     convert List arr
   ]
 ]
@@ -1285,35 +1274,34 @@ def floor-log2 fn [
 
 # Heapsort over a sub-span arr[lo..hi] — introsort's guaranteed fallback.
 def sift-down-span fn [
-  [box:Array hi:Integer i:Integer lo:Integer arr:Array] [Array] [
-    def cmpf (box get 0)
+  [comp:Function hi:Integer i:Integer lo:Integer arr:Array] [Array] [
     def largest (make Array [i])
     def li (((((i sub lo) mul 2) add 1) add lo))
     def ri (((((i sub lo) mul 2) add 2) add lo))
     def _l (if (li lte hi) [
-      def c ((arr get li) (arr get (largest get 0)) cmpf)
+      def c ((arr get li) (arr get (largest get 0)) comp)
       if (c gt 0) [ largest set 0 li end 0 ] [0]
     ] [0])
     def _r (if (ri lte hi) [
-      def c ((arr get ri) (arr get (largest get 0)) cmpf)
+      def c ((arr get ri) (arr get (largest get 0)) comp)
       if (c gt 0) [ largest set 0 ri end 0 ] [0]
     ] [0])
     def lg (largest get 0)
     def _s (if (lg neq i) [
       arr i lg swap-at end
-      arr lo lg hi box sift-down-span
+      arr lo lg hi comp/r sift-down-span
     ] [ arr ])
     arr
   ]
 ]
 
 def heap-span fn [
-  [box:Array hi:Integer lo:Integer arr:Array] [Array] [
+  [comp:Function hi:Integer lo:Integer arr:Array] [Array] [
     def cnt ((hi sub lo) add 1)
     def _b (iota (cnt div 2) each [
       var [[t]
         def i ((lo add ((cnt div 2) sub 1)) sub t)
-        arr lo i hi box sift-down-span
+        arr lo i hi comp/r sift-down-span
         0
       ]
     ])
@@ -1322,7 +1310,7 @@ def heap-span fn [
         def e (hi sub t)
         if (e gt lo) [
           arr lo e swap-at end
-          arr lo lo (e sub 1) box sift-down-span
+          arr lo lo (e sub 1) comp/r sift-down-span
           0
         ] [0]
       ]
@@ -1332,16 +1320,15 @@ def heap-span fn [
 ]
 
 def intro-go fn [
-  [box:Array lim:Integer hi:Integer lo:Integer arr:Array] [Array] [
-    def cmpf (box get 0)
+  [comp:Function lim:Integer hi:Integer lo:Integer arr:Array] [Array] [
     if (lo lt hi) [
-      if (lim eq 0) [ arr lo hi box heap-span ] [
+      if (lim eq 0) [ arr lo hi comp/r heap-span ] [
         def pivot (arr get hi)
         def ic (make Array [lo])
         def _ (iota (hi sub lo) each [
           var [[t]
             def j (lo add t)
-            def c ((arr get j) pivot cmpf)
+            def c ((arr get j) pivot comp)
             if (c lt 0) [
               def i (ic get 0)
               arr i j swap-at end
@@ -1352,8 +1339,8 @@ def intro-go fn [
         ])
         def p (ic get 0)
         arr p hi swap-at end
-        def _l (arr lo (p sub 1) (lim sub 1) box intro-go)
-        def _r (arr (p add 1) hi (lim sub 1) box intro-go)
+        def _l (arr lo (p sub 1) (lim sub 1) comp/r intro-go)
+        def _r (arr (p add 1) hi (lim sub 1) comp/r intro-go)
         arr
       ]
     ] [ arr ]
@@ -1364,10 +1351,9 @@ def intro-sort fn [
   [comp:Function lst:List] [List] [
     def n (lst size)
     def arr (make Array lst)
-    def box (make Array [comp/r])
     def _ (if (n gt 1) [
       def lim ((n floor-log2) mul 2)
-      arr 0 (n sub 1) lim box intro-go
+      arr 0 (n sub 1) lim comp/r intro-go
     ] [ arr ])
     convert List arr
   ]
@@ -1379,8 +1365,6 @@ def tim-sort fn [
   [comp:Function lst:List] [List] [
     def n (lst size)
     if (n lte 1) [ lst ] [
-      def box (make Array [comp/r])
-      def cmpf (box get 0)
       def arr (make Array lst)
       def buf (make Array lst)
       def bounds (make Array (iota (n add 1) each [drop 0]))
@@ -1397,7 +1381,7 @@ def tim-sort fn [
                 if (stopped get 0) [0] [
                   def jj (j get 0)
                   if (jj lt n) [
-                    def c ((arr get (jj sub 1)) (arr get jj) cmpf)
+                    def c ((arr get (jj sub 1)) (arr get jj) comp)
                     if (c lte 0) [ j set 0 (jj add 1) end 0 ] [ stopped set 0 true end 0 ]
                   ] [ stopped set 0 true end 0 ]
                 ]
@@ -1417,7 +1401,7 @@ def tim-sort fn [
           if (r gt 0) [
             def me (merged-end get 0)
             def re (bounds get r)
-            def _x (arr 0 me re buf box merge-span)
+            def _x (arr 0 me re buf comp/r merge-span)
             merged-end set 0 re end
             0
           ] [0]

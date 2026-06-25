@@ -105,12 +105,12 @@ def sorted [1 2 3 3 5 7 8 9]
 # A distribution sort rejects non-Integer elements.
 [ [["a" "b"] Sort.counting end] Assert.throws end ] "counting-needs-ints" Test.test end
 def e1 (do [["a" "b"] Sort.counting end])
-[ bad_input/q (e1 get code) Assert.equal end ] "counting-bad_input-code" Test.test end
+[ bad_input/q (e1.code) Assert.equal end ] "counting-bad_input-code" Test.test end
 
 # Radix rejects negatives.
 [ [[3 -1 2] Sort.radix-lsd end] Assert.throws end ] "radix-needs-non-neg" Test.test end
 def e2 (do [[3 -1 2] Sort.radix-lsd end])
-[ bad_input/q (e2 get code) Assert.equal end ] "radix-bad_input-code" Test.test end
+[ bad_input/q (e2.code) Assert.equal end ] "radix-bad_input-code" Test.test end
 
 
 # --- summary --------------------------------------------------------

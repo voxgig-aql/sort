@@ -11,6 +11,29 @@ The goal of this document is to save the next person time, and to give the
 balanced — [§9](#9-what-worked-well) covers what made the build *pleasant*,
 which was a lot.
 
+## Update (DX-driven aql fixes)
+
+A later aql build acted on some of the issues below, so the library was
+migrated to match it. The accessor family was split: `get`/`getr` now
+**evaluate** their key, so a bare literal field name after `get` is an
+`undefined_word` error by design — literal-field reads move to the new
+`.field` / `!.field` sugar (e.g. `e get code` → `e.code`), or, where the
+value is on the stack with no receiver, to the quoted-atom key form
+`get field/q`. The only such sites here were the two error-code reads in
+`test/sort_unit_test.aql` (`e get code` → `e.code`). Separately, the
+`comp/r` frame over-pop bug behind the Array-**box** comparator-threading
+workaround ([§1.2](#12-the-def-cf-compr-workaround-trips-the-static-checker))
+is fixed, so every divide-and-conquer sort now threads the comparator
+**directly** as its `comp:Function` parameter — invoked bare (`xi xj comp`)
+and forwarded with `comp/r` — and the recursive `radix-msd` `no_signature`
+false positive ([§6](#6-tooling--the-static-checker-aql-check)) is gone, so
+`aql check sort.aql` is now **0 errors**. (Note: the `def cf (comp/r)`
+local form of [§1.2](#12-the-def-cf-compr-workaround-trips-the-static-checker)
+still trips the checker's `undefined_word` false positive, so the box
+collapses to the parameter itself rather than to a `cf` local.) These
+changes require an aql build carrying those fixes; on the original pinned
+build they will not run/check clean.
+
 ## Severity legend
 
 - 🔴 **Silent wrong result** — code runs, returns the wrong value, no error.
