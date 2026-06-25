@@ -1,7 +1,7 @@
 {
   "name": "sort",
   "version": "0.1.0",
-  "aql_ref": "12a44e0",
+  "aql_ref": "f5e590f",
   "description": "Sorting algorithms for AQL: every well-known sort (comparison, distribution, and joke/educational), driven by composable comparators, exposed as the single `Sort` namespace. Sorts return a NEW sorted List and never mutate their input.",
   "conventions": {
     "import": "import \"./sort.aql\"  — no `end` needed on the pinned build; the library imports its own aql:* deps, callers need not",

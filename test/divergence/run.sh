@@ -32,7 +32,7 @@ set -uo pipefail
 
 # aql-lang/aql @ main, 2026-06-24 — the latest commit the library pins. Bump in
 # lockstep with the workflow AQL_REF.
-AQL_BYTECODE_REF=12a44e0c6ca3f49cd35a871b573fd96bc13d7fd6
+AQL_BYTECODE_REF=f5e590f1418ef2b4f5c6179321a89b5723b63201
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"

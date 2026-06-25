@@ -2,7 +2,7 @@
 
 Guidance for an AI coding agent calling this sorting library from an AQL
 project. Every code block below is verified to run against `aql-lang/aql`
-@ `12a44e0`. If you read nothing else, read
+@ `f5e590f`. If you read nothing else, read
 [The one calling rule](#the-one-calling-rule) and
 [Common mistakes](#common-mistakes).
 
