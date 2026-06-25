@@ -1,0 +1,1492 @@
+# sort.aql — every sorting algorithm, over every AQL type, in AQL.
+#
+# Public surface: the single `Sort` namespace, exported at the bottom.
+# Two kinds of word live in it:
+#
+#   * COMPARATORS — two-argument function values returning an Integer that
+#     is negative / zero / positive when the first item sorts before /
+#     equal to / after the second. Defaults per type plus alphanumeric and
+#     case-folding orders, and combinators that build new comparators:
+#     `Sort.by-number`, `Sort.by-string`, `Sort.by-boolean`,
+#     `Sort.by-generic`, `Sort.natural`, `Sort.case-insensitive`,
+#     `Sort.reverse`, `Sort.by-key`.
+#
+#   * ALGORITHMS — each takes a List and returns a NEW sorted List; the
+#     input is never mutated (the opposite of an in-place library). The
+#     comparison sorts take a comparator argument; the distribution sorts
+#     (counting/radix/…) take none and order Integers ascending.
+#
+# Calling convention (AQL is not C/Python/JS): receiver/data first, then
+# the verb, then any extra arguments, terminated with `end` (or wrapped in
+# parens). The comparator is the trailing argument:
+#
+#     [3 1 2] Sort.quick Sort.by-number end      → [1 2 3]
+#     names   Sort.merge Sort.natural    end
+#     xs      Sort.heap  mycmp/r          end     # your own comparator word
+#     xs      Sort.quick cmp/r            end     # the built-in `cmp`
+#     ints    Sort.counting               end     # no comparator
+#
+# Pass a comparator FROM this namespace bare (`Sort.by-number`); pass your
+# own comparator word or the built-in `cmp` with a `/r` suffix so it is
+# handed over as a value rather than invoked on the spot.
+#
+# Why one file: AQL resolves a function value's free words in the module
+# that runs it, so a comparator that calls a private helper (e.g. the
+# natural-order scanner) must live in the same module as the algorithms
+# that invoke it. Comparators and algorithms therefore share this file.
+#
+# Errors (catch with `do […] error […]`, read `e get code`):
+#   bad_input    a distribution sort got a non-Integer / out-of-span item
+#   bogo_giveup  Sort.bogo exceeded its safety cap without sorting
+
+import "aql:string-util"
+import "aql:math-util"
+
+
+# ====================================================================
+# COMPARATORS
+# ====================================================================
+#
+# A comparator's signature is `[b:T a:T] [Integer]`. AQL's rule is "the
+# first signature parameter is the top of the stack", so when a sort
+# invokes `xi xj comp`, the first-written item `xi` binds to `a` and the
+# second `xj` to `b`. Writing the body in terms of `a` (earlier) and `b`
+# (later) then reads naturally: "a before b ⇒ negative".
+
+# --- default comparators (one per AQL type) -------------------------
+#
+# Each defers to the native `cmp` — a polymorphic three-way compare that
+# never subtracts, so there is no 63-bit integer-overflow risk.
+
+def by-number fn [
+  [b:Any a:Any] [Integer] [ (a cmp b) ]
+]
+
+def by-string fn [
+  [b:String a:String] [Integer] [ (a cmp b) ]
+]
+
+def by-boolean fn [
+  [b:Boolean a:Boolean] [Integer] [ (a cmp b) ]
+]
+
+def by-generic fn [
+  [b:Any a:Any] [Integer] [ (a cmp b) ]
+]
+
+
+# --- natural / alphanumeric ordering --------------------------------
+#
+# Orders strings so embedded runs of digits compare by numeric value, not
+# character by character: "file2" < "file10", "x9" < "x10". Each string is
+# read as an alternating sequence of digit and non-digit chunks; digit
+# chunks compare as Integers, the rest lexicographically.
+
+def is-digit fn [
+  [ch:String] [Boolean] [
+    (ch gte "0") and (ch lte "9")
+  ]
+]
+
+# From index `i` in string `s`, the end index (exclusive) of the maximal
+# run starting at `i` whose digit-ness equals `want`.
+def run-end fn [
+  [want:Boolean i:Integer s:String] [Integer] [
+    def n (s size)
+    def cur (make Array [i])
+    def _ (iota n each [
+      var [[t]
+        def j (cur get 0)
+        if (j lt n) [
+          def ch (s slice j (j add 1))
+          if ((ch is-digit) eq want) [ cur set 0 (j add 1) end 0 ] [0]
+        ] [0]
+      ]
+    ])
+    cur get 0
+  ]
+]
+
+# Compare two strings naturally. Walks both with cursors held in
+# single-cell Arrays — a bounded `iota` loop rather than recursion, so
+# the comparator stays callable when a sort invokes it through a function
+# parameter (a recursive helper's self-call would not resolve in that
+# context). At most `len(a) + len(b) + 1` steps are needed; once a verdict
+# is reached the `done` flag idles the remaining iterations.
+def natural fn [
+  [b:String a:String] [Integer] [
+    def na (a size)
+    def nb (b size)
+    def ia   (make Array [0])
+    def ib   (make Array [0])
+    def res  (make Array [0])
+    def done (make Array [false])
+    def _ (iota ((na add nb) add 1) each [
+      var [[t]
+        if (done get 0) [0] [
+          def pa (ia get 0)
+          def pb (ib get 0)
+          if ((pa gte na) and (pb gte nb)) [ done set 0 true end 0 ] [
+            if (pa gte na) [ res set 0 -1 end  done set 0 true end  0 ] [
+              if (pb gte nb) [ res set 0 1 end  done set 0 true end  0 ] [
+                def cha (a slice pa (pa add 1))
+                def chb (b slice pb (pb add 1))
+                if ((cha is-digit) and (chb is-digit)) [
+                  def ea (a pa true run-end)
+                  def eb (b pb true run-end)
+                  def va (convert Integer (a slice pa ea))
+                  def vb (convert Integer (b slice pb eb))
+                  def c (va vb by-number)
+                  if (c neq 0) [ res set 0 c end  done set 0 true end  0 ] [
+                    ia set 0 ea end  ib set 0 eb end  0
+                  ]
+                ] [
+                  def c (cha chb by-string)
+                  if (c neq 0) [ res set 0 c end  done set 0 true end  0 ] [
+                    ia set 0 (pa add 1) end  ib set 0 (pb add 1) end  0
+                  ]
+                ]
+              ]
+            ]
+          ]
+        ]
+      ]
+    ])
+    res get 0
+  ]
+]
+
+
+# --- case-insensitive string ordering -------------------------------
+
+def case-insensitive fn [
+  [b:String a:String] [Integer] [
+    def la (a StringUtil.lower end)
+    def lb (b StringUtil.lower end)
+    (la lb by-string)
+  ]
+]
+
+
+# --- combinators ----------------------------------------------------
+#
+# Each returns a NEW comparator (a closure over its arguments), so they
+# compose, e.g. `(keyfn Sort.by-key Sort.by-number) Sort.reverse`.
+
+def rev-cmp fn [
+  [comp:Function] [Function] [
+    [b:Any a:Any] => [ 0 sub (a b comp) ]
+  ]
+]
+
+# Order by a derived key. `keyfn` maps each item to a key; the keys are
+# ordered by the native `cmp` (numbers numerically, strings
+# lexicographically). One captured function, so it composes through a
+# sort (e.g. `(len-of Sort.by-key) Sort.reverse`).
+def by-key-cmp fn [
+  [keyfn:Function] [Function] [
+    [b:Any a:Any] => [ ((a keyfn) (b keyfn) cmp) ]
+  ]
+]
+
+
+# ====================================================================
+# ALGORITHMS
+# ====================================================================
+
+# Swap two slots of a mutable Array in place. Returns nothing — call it
+# as a bare statement (never `def`-bind a void call).
+def swap-at fn [
+  [j:Integer i:Integer arr:Array] [] [
+    def vi (arr get i)
+    def vj (arr get j)
+    arr set i vj end
+    arr set j vi end
+  ]
+]
+
+
+# --- is-sorted ------------------------------------------------------
+
+def is-sorted-fn fn [
+  [comp:Function lst:List] [Boolean] [
+    def n (lst size)
+    def arr (make Array lst)
+    def ok (make Array [true])
+    def _ (iota n each [
+      var [[i]
+        if (i gt 0) [
+          def c ((arr get (i sub 1)) (arr get i) comp)
+          if (c gt 0) [ ok set 0 false end 0 ] [0]
+        ] [0]
+      ]
+    ])
+    ok get 0
+  ]
+]
+
+
+# --- O(n^2) comparison sorts ----------------------------------------
+
+# Bubble sort.
+def bubble-sort fn [
+  [comp:Function lst:List] [List] [
+    def n (lst size)
+    def arr (make Array lst)
+    def _ (iota n each [
+      var [[pass]
+        def _i (iota (n sub 1) each [
+          var [[i]
+            def c ((arr get i) (arr get (i add 1)) comp)
+            if (c gt 0) [ arr i (i add 1) swap-at end 0 ] [0]
+          ]
+        ])
+        0
+      ]
+    ])
+    convert List arr
+  ]
+]
+
+# Insertion sort (stable).
+def insertion-sort fn [
+  [comp:Function lst:List] [List] [
+    def n (lst size)
+    def arr (make Array lst)
+    def _ (iota n each [
+      var [[i]
+        def key (arr get i)
+        def jc (make Array [i])
+        def _sh (iota i each [
+          var [[t]
+            def j (jc get 0)
+            if (j gt 0) [
+              def prev (arr get (j sub 1))
+              def c (prev key comp)
+              if (c gt 0) [ arr set j prev end  jc set 0 (j sub 1) end  0 ] [0]
+            ] [0]
+          ]
+        ])
+        arr set (jc get 0) key end
+        0
+      ]
+    ])
+    convert List arr
+  ]
+]
+
+# Selection sort.
+def selection-sort fn [
+  [comp:Function lst:List] [List] [
+    def n (lst size)
+    def arr (make Array lst)
+    def _ (iota n each [
+      var [[i]
+        def mi (make Array [i])
+        def _f (iota n each [
+          var [[j]
+            if (j gt i) [
+              def c ((arr get j) (arr get (mi get 0)) comp)
+              if (c lt 0) [ mi set 0 j end 0 ] [0]
+            ] [0]
+          ]
+        ])
+        arr i (mi get 0) swap-at end
+        0
+      ]
+    ])
+    convert List arr
+  ]
+]
+
+
+# --- divide & conquer (in-place on the working Array) ---------------
+#
+# These helpers mutate the working Array in place and RETURN it, so a
+# recursive call can be `def`-bound (a void call cannot). The comparator
+# is threaded as a one-cell Array "box" (`make Array [comp/r]`): parking a
+# Function *parameter* with `/r` is one-shot, and passing the box (a plain
+# Array) sidesteps that and keeps the static checker happy. Read it back
+# with `def cmpf (box get 0)` and invoke as `xi xj cmpf`.
+
+# Quicksort — Lomuto partition on the last element.
+def quick-go fn [
+  [box:Array hi:Integer lo:Integer arr:Array] [Array] [
+    def cmpf (box get 0)
+    if (lo lt hi) [
+      def pivot (arr get hi)
+      def ic (make Array [lo])
+      def _ (iota (hi sub lo) each [
+        var [[t]
+          def j (lo add t)
+          def c ((arr get j) pivot cmpf)
+          if (c lt 0) [
+            def i (ic get 0)
+            arr i j swap-at end
+            ic set 0 (i add 1) end
+            0
+          ] [0]
+        ]
+      ])
+      def p (ic get 0)
+      arr p hi swap-at end
+      def _l (arr lo (p sub 1) box quick-go)
+      def _r (arr (p add 1) hi box quick-go)
+      arr
+    ] [ arr ]
+  ]
+]
+
+def quick-sort fn [
+  [comp:Function lst:List] [List] [
+    def n (lst size)
+    def arr (make Array lst)
+    def box (make Array [comp/r])
+    def _ (if (n gt 1) [ arr 0 (n sub 1) box quick-go ] [ arr ])
+    convert List arr
+  ]
+]
+
+# Merge sort (stable) — the cross-check reference implementation.
+def merge-span fn [
+  [box:Array buf:Array hi:Integer mid:Integer lo:Integer arr:Array] [Array] [
+    def cmpf (box get 0)
+    def i (make Array [lo])
+    def j (make Array [mid])
+    def k (make Array [lo])
+    def _ (iota (hi sub lo) each [
+      var [[t]
+        def ii (i get 0)
+        def jj (j get 0)
+        def take-left (
+          if (ii gte mid) [false] [
+            if (jj gte hi) [true] [
+              def c ((arr get ii) (arr get jj) cmpf)
+              (c lte 0)
+            ]
+          ]
+        )
+        if take-left [
+          buf set (k get 0) (arr get ii) end
+          i set 0 (ii add 1) end
+          0
+        ] [
+          buf set (k get 0) (arr get jj) end
+          j set 0 (jj add 1) end
+          0
+        ]
+        k set 0 ((k get 0) add 1) end
+        0
+      ]
+    ])
+    def _c (iota (hi sub lo) each [
+      var [[t]
+        def idx (lo add t)
+        arr set idx (buf get idx) end
+        0
+      ]
+    ])
+    arr
+  ]
+]
+
+def merge-go fn [
+  [box:Array buf:Array hi:Integer lo:Integer arr:Array] [Array] [
+    if ((hi sub lo) gt 1) [
+      def mid (lo add ((hi sub lo) div 2))
+      def _l (arr lo mid buf box merge-go)
+      def _r (arr mid hi buf box merge-go)
+      arr lo mid hi buf box merge-span
+    ] [ arr ]
+  ]
+]
+
+def merge-sort fn [
+  [comp:Function lst:List] [List] [
+    def n (lst size)
+    def arr (make Array lst)
+    def buf (make Array lst)
+    def box (make Array [comp/r])
+    def _ (arr 0 n buf box merge-go)
+    convert List arr
+  ]
+]
+
+# Heapsort (binary max-heap).
+def sift-down fn [
+  [box:Array n:Integer i:Integer arr:Array] [Array] [
+    def cmpf (box get 0)
+    def largest (make Array [i])
+    def l ((i mul 2) add 1)
+    def r ((i mul 2) add 2)
+    def _l (if (l lt n) [
+      def c ((arr get l) (arr get (largest get 0)) cmpf)
+      if (c gt 0) [ largest set 0 l end 0 ] [0]
+    ] [0])
+    def _r (if (r lt n) [
+      def c ((arr get r) (arr get (largest get 0)) cmpf)
+      if (c gt 0) [ largest set 0 r end 0 ] [0]
+    ] [0])
+    def lg (largest get 0)
+    def _s (if (lg neq i) [
+      arr i lg swap-at end
+      arr lg n box sift-down
+    ] [ arr ])
+    arr
+  ]
+]
+
+def heap-sort fn [
+  [comp:Function lst:List] [List] [
+    def n (lst size)
+    def arr (make Array lst)
+    def box (make Array [comp/r])
+    def _b (iota (n div 2) each [
+      var [[t]
+        def i (((n div 2) sub 1) sub t)
+        arr i n box sift-down
+        0
+      ]
+    ])
+    def _e (iota n each [
+      var [[t]
+        def hi ((n sub 1) sub t)
+        if (hi gt 0) [
+          arr 0 hi swap-at end
+          arr 0 hi box sift-down
+          0
+        ] [0]
+      ]
+    ])
+    convert List arr
+  ]
+]
+
+
+# --- more O(n^2) / gap comparison sorts -----------------------------
+#
+# The data-dependent loops below are written as bounded `iota` loops with
+# an explicit state cell, since AQL offers no `while`. Each bound is a
+# proven worst-case step count for that algorithm (≤ n² moves), so the
+# loop always reaches the sorted state and then idles.
+
+# Gnome sort.
+def gnome-sort fn [
+  [comp:Function lst:List] [List] [
+    def n (lst size)
+    def arr (make Array lst)
+    def pos (make Array [0])
+    def steps ((n add 1) mul (n add 1))
+    def _ (iota steps each [
+      var [[t]
+        def p (pos get 0)
+        if (p lt n) [
+          if (p eq 0) [ pos set 0 1 end 0 ] [
+            def c ((arr get (p sub 1)) (arr get p) comp)
+            if (c gt 0) [
+              arr (p sub 1) p swap-at end
+              pos set 0 (p sub 1) end
+              0
+            ] [ pos set 0 (p add 1) end 0 ]
+          ]
+        ] [0]
+      ]
+    ])
+    convert List arr
+  ]
+]
+
+# Cocktail shaker sort (bidirectional bubble). n full sweeps suffice.
+def cocktail-sort fn [
+  [comp:Function lst:List] [List] [
+    def n (lst size)
+    def arr (make Array lst)
+    def _ (iota n each [
+      var [[pass]
+        def _f (iota (n sub 1) each [
+          var [[i]
+            def c ((arr get i) (arr get (i add 1)) comp)
+            if (c gt 0) [ arr i (i add 1) swap-at end 0 ] [0]
+          ]
+        ])
+        def _b (iota (n sub 1) each [
+          var [[t]
+            def i ((n sub 2) sub t)
+            def c ((arr get i) (arr get (i add 1)) comp)
+            if (c gt 0) [ arr i (i add 1) swap-at end 0 ] [0]
+          ]
+        ])
+        0
+      ]
+    ])
+    convert List arr
+  ]
+]
+
+# Comb sort: shrink the gap geometrically, then finish with bubble
+# sweeps. n outer sweeps cover both the gap-shrink and the final passes.
+def comb-sort fn [
+  [comp:Function lst:List] [List] [
+    def n (lst size)
+    def arr (make Array lst)
+    def gap (make Array [n])
+    def _ (iota n each [
+      var [[pass]
+        def g0 (gap get 0)
+        def g ((g0 mul 10) div 13)
+        def gg (if (g lt 1) [1] [g])
+        gap set 0 gg end
+        def _s (iota n each [
+          var [[i]
+            if ((i add gg) lt n) [
+              def c ((arr get i) (arr get (i add gg)) comp)
+              if (c gt 0) [ arr i (i add gg) swap-at end 0 ] [0]
+            ] [0]
+          ]
+        ])
+        0
+      ]
+    ])
+    convert List arr
+  ]
+]
+
+# Shell sort with the halving (Shell's original) gap sequence.
+def shell-sort fn [
+  [comp:Function lst:List] [List] [
+    def n (lst size)
+    def arr (make Array lst)
+    def gap (make Array [(n div 2)])
+    def _ (iota n each [
+      var [[gstep]
+        def g (gap get 0)
+        if (g gt 0) [
+          def _ins (iota n each [
+            var [[i]
+              if (i gte g) [
+                def jc (make Array [i])
+                def _sh (iota n each [
+                  var [[s]
+                    def j (jc get 0)
+                    if (j gte g) [
+                      def c ((arr get (j sub g)) (arr get j) comp)
+                      if (c gt 0) [ arr j (j sub g) swap-at end  jc set 0 (j sub g) end  0 ] [0]
+                    ] [0]
+                  ]
+                ])
+                0
+              ] [0]
+            ]
+          ])
+          gap set 0 (g div 2) end
+          0
+        ] [0]
+      ]
+    ])
+    convert List arr
+  ]
+]
+
+# Odd–even (brick) sort. n phase-pairs guarantee a sorted result.
+def odd-even-sort fn [
+  [comp:Function lst:List] [List] [
+    def n (lst size)
+    def arr (make Array lst)
+    def _ (iota n each [
+      var [[pass]
+        def _o (iota n each [
+          var [[i]
+            if (((i mod 2) eq 1) and ((i add 1) lt n)) [
+              def c ((arr get i) (arr get (i add 1)) comp)
+              if (c gt 0) [ arr i (i add 1) swap-at end 0 ] [0]
+            ] [0]
+          ]
+        ])
+        def _e (iota n each [
+          var [[i]
+            if (((i mod 2) eq 0) and ((i add 1) lt n)) [
+              def c ((arr get i) (arr get (i add 1)) comp)
+              if (c gt 0) [ arr i (i add 1) swap-at end 0 ] [0]
+            ] [0]
+          ]
+        ])
+        0
+      ]
+    ])
+    convert List arr
+  ]
+]
+
+# Cycle sort — minimal writes; each element placed by counting ranks.
+def cycle-sort fn [
+  [comp:Function lst:List] [List] [
+    def n (lst size)
+    def arr (make Array lst)
+    def _ (iota n each [
+      var [[cs]
+        if (cs lt (n sub 1)) [
+          def item (make Array [(arr get cs)])
+          def posc (make Array [cs])
+          # initial rank of item among [cs+1 .. n-1]
+          def _r0 (iota n each [
+            var [[i]
+              if (i gt cs) [
+                def c ((arr get i) (item get 0) comp)
+                if (c lt 0) [ posc set 0 ((posc get 0) add 1) end 0 ] [0]
+              ] [0]
+            ]
+          ])
+          if ((posc get 0) eq cs) [0] [
+            # skip duplicates
+            def _d0 (iota n each [
+              var [[t]
+                def p (posc get 0)
+                if (p lt n) [
+                  def c ((item get 0) (arr get p) comp)
+                  if (c eq 0) [ posc set 0 (p add 1) end 0 ] [0]
+                ] [0]
+              ]
+            ])
+            def tmp (arr get (posc get 0))
+            arr set (posc get 0) (item get 0) end
+            item set 0 tmp end
+            # rotate the rest of the cycle
+            def _cyc (iota (n mul n) each [
+              var [[t]
+                if ((posc get 0) neq cs) [
+                  posc set 0 cs end
+                  def _r (iota n each [
+                    var [[i]
+                      if (i gt cs) [
+                        def c ((arr get i) (item get 0) comp)
+                        if (c lt 0) [ posc set 0 ((posc get 0) add 1) end 0 ] [0]
+                      ] [0]
+                    ]
+                  ])
+                  def _d (iota n each [
+                    var [[u]
+                      def p (posc get 0)
+                      if (p lt n) [
+                        def c ((item get 0) (arr get p) comp)
+                        if (c eq 0) [ posc set 0 (p add 1) end 0 ] [0]
+                      ] [0]
+                    ]
+                  ])
+                  def tmp2 (arr get (posc get 0))
+                  arr set (posc get 0) (item get 0) end
+                  item set 0 tmp2 end
+                  0
+                ] [0]
+              ]
+            ])
+            0
+          ]
+        ] [0]
+      ]
+    ])
+    convert List arr
+  ]
+]
+
+# Pancake sort — repeatedly flip the largest remaining element to the top
+# then flip it down into place.
+def flip-prefix fn [
+  [k:Integer arr:Array] [] [
+    def half ((k add 1) div 2)
+    def _ (iota half each [
+      var [[i]
+        arr i (k sub i) swap-at end
+        0
+      ]
+    ])
+  ]
+]
+
+def pancake-sort fn [
+  [comp:Function lst:List] [List] [
+    def n (lst size)
+    def arr (make Array lst)
+    def _ (iota n each [
+      var [[t]
+        def sz (n sub t)
+        if (sz gt 1) [
+          def mi (make Array [0])
+          def _f (iota sz each [
+            var [[i]
+              def c ((arr get i) (arr get (mi get 0)) comp)
+              if (c gt 0) [ mi set 0 i end 0 ] [0]
+            ]
+          ])
+          def m (mi get 0)
+          def _flip (if (m neq (sz sub 1)) [
+            arr m flip-prefix end
+            arr (sz sub 1) flip-prefix end
+            0
+          ] [0])
+          0
+        ] [0]
+      ]
+    ])
+    convert List arr
+  ]
+]
+
+# Bitonic sort, generalised to any length via the greatest-power-of-two
+# split. Recurses on index ranges (a named word, so the recursion
+# resolves — unlike a recursive comparator). `dir` true = ascending.
+def gp2lt fn [
+  [m:Integer] [Integer] [
+    def k (make Array [1])
+    def _ (iota m each [
+      var [[t]
+        if (((k get 0) mul 2) lt m) [ k set 0 ((k get 0) mul 2) end 0 ] [0]
+      ]
+    ])
+    k get 0
+  ]
+]
+
+def bitonic-merge fn [
+  [box:Array dir:Boolean cnt:Integer lo:Integer arr:Array] [Array] [
+    def cmpf (box get 0)
+    if (cnt gt 1) [
+      def k (cnt gp2lt)
+      def _ (iota (cnt sub k) each [
+        var [[t]
+          def i (lo add t)
+          def c ((arr get i) (arr get (i add k)) cmpf)
+          def wrong (if dir [c gt 0] [c lt 0])
+          if wrong [ arr i (i add k) swap-at end 0 ] [0]
+        ]
+      ])
+      def _l (arr lo k dir box bitonic-merge)
+      def _r (arr (lo add k) (cnt sub k) dir box bitonic-merge)
+      arr
+    ] [ arr ]
+  ]
+]
+
+def bitonic-go fn [
+  [box:Array dir:Boolean cnt:Integer lo:Integer arr:Array] [Array] [
+    if (cnt gt 1) [
+      def m (cnt div 2)
+      def _l (arr lo m (dir not) box bitonic-go)
+      def _r (arr (lo add m) (cnt sub m) dir box bitonic-go)
+      arr lo cnt dir box bitonic-merge
+    ] [ arr ]
+  ]
+]
+
+def bitonic-sort fn [
+  [comp:Function lst:List] [List] [
+    def n (lst size)
+    def arr (make Array lst)
+    def box (make Array [comp/r])
+    def _ (if (n gt 1) [ arr 0 n true box bitonic-go ] [ arr ])
+    convert List arr
+  ]
+]
+
+
+# --- helpers for distribution sorts ---------------------------------
+
+def list-min fn [
+  [lst:List] [Integer] [
+    def n (lst size)
+    def arr (make Array lst)
+    def m (make Array [(arr get 0)])
+    def _ (iota n each [
+      var [[i] def v (arr get i) if (v lt (m get 0)) [ m set 0 v end 0 ] [0] ]
+    ])
+    m get 0
+  ]
+]
+
+def list-max fn [
+  [lst:List] [Integer] [
+    def n (lst size)
+    def arr (make Array lst)
+    def m (make Array [(arr get 0)])
+    def _ (iota n each [
+      var [[i] def v (arr get i) if (v gt (m get 0)) [ m set 0 v end 0 ] [0] ]
+    ])
+    m get 0
+  ]
+]
+
+# Validate that every element is an Integer (distribution sorts need it).
+def ensure-ints fn [
+  [name:String lst:List] [] [
+    def n (lst size)
+    def arr (make Array lst)
+    def _ (iota n each [
+      var [[i]
+        if (((arr get i) is Integer) not) [
+          def msg `Sort.${name}: needs Integer elements (got ${(arr get i)})`
+          raise bad_input msg
+        ] [0]
+      ]
+    ])
+  ]
+]
+
+# Validate non-negative Integers (radix / bead).
+def ensure-non-neg fn [
+  [name:String lst:List] [] [
+    lst name ensure-ints
+    def n (lst size)
+    def arr (make Array lst)
+    def _ (iota n each [
+      var [[i]
+        if ((arr get i) lt 0) [
+          def msg `Sort.${name}: needs non-negative Integers (got ${(arr get i)})`
+          raise bad_input msg
+        ] [0]
+      ]
+    ])
+  ]
+]
+
+
+# --- distribution sorts (Integers, ascending; no comparator) --------
+
+# Counting sort. Handles negatives via a min offset.
+def counting-sort fn [
+  [lst:List] [List] [
+    def n (lst size)
+    if (n eq 0) [ [] ] [
+      lst "counting" ensure-ints
+      def mn (lst list-min)
+      def mx (lst list-max)
+      def span ((mx sub mn) add 1)
+      def _g (if (span gt 100000000) [
+        def msg `Sort.counting: value span too large (${span})`
+        raise bad_input msg
+      ] [0])
+      def counts (make Array (iota span each [drop 0]))
+      def arr (make Array lst)
+      def _c (iota n each [
+        var [[i]
+          def idx ((arr get i) sub mn)
+          counts set idx ((counts get idx) add 1) end
+          0
+        ]
+      ])
+      def out (make Array (iota n each [drop 0]))
+      def oc (make Array [0])
+      def _b (iota span each [
+        var [[v]
+          def _r (iota (counts get v) each [
+            var [[r]
+              out set (oc get 0) (v add mn) end
+              oc set 0 ((oc get 0) add 1) end
+              0
+            ]
+          ])
+          0
+        ]
+      ])
+      convert List out
+    ]
+  ]
+]
+
+# Pigeonhole sort — like counting, framed as holes that hold the items.
+def pigeonhole-sort fn [
+  [lst:List] [List] [
+    def n (lst size)
+    if (n eq 0) [ [] ] [
+      lst "pigeonhole" ensure-ints
+      def mn (lst list-min)
+      def mx (lst list-max)
+      def holes ((mx sub mn) add 1)
+      def _g (if (holes gt 100000000) [
+        def msg `Sort.pigeonhole: value span too large (${holes})`
+        raise bad_input msg
+      ] [0])
+      def counts (make Array (iota holes each [drop 0]))
+      def arr (make Array lst)
+      def _c (iota n each [
+        var [[i]
+          def h ((arr get i) sub mn)
+          counts set h ((counts get h) add 1) end
+          0
+        ]
+      ])
+      def out (make Array (iota n each [drop 0]))
+      def oc (make Array [0])
+      def _b (iota holes each [
+        var [[h]
+          def _r (iota (counts get h) each [
+            var [[r]
+              out set (oc get 0) (h add mn) end
+              oc set 0 ((oc get 0) add 1) end
+              0
+            ]
+          ])
+          0
+        ]
+      ])
+      convert List out
+    ]
+  ]
+]
+
+# Radix sort, least-significant-digit, base 10, stable. Non-negative.
+def radix-lsd-sort fn [
+  [lst:List] [List] [
+    def n (lst size)
+    if (n lte 1) [ lst ] [
+      lst "radix-lsd" ensure-non-neg
+      def mx (lst list-max)
+      def cur (make Array lst)
+      def place (make Array [1])
+      def _ (iota 19 each [
+        var [[d]
+          def pl (place get 0)
+          if (pl lte mx) [
+            def counts (make Array (iota 10 each [drop 0]))
+            def _c1 (iota n each [
+              var [[i]
+                def dig (((cur get i) div pl) mod 10)
+                counts set dig ((counts get dig) add 1) end
+                0
+              ]
+            ])
+            def acc (make Array [0])
+            def _ps (iota 10 each [
+              var [[v]
+                def cv (counts get v)
+                counts set v (acc get 0) end
+                acc set 0 ((acc get 0) add cv) end
+                0
+              ]
+            ])
+            def out (make Array (iota n each [drop 0]))
+            def _c2 (iota n each [
+              var [[i]
+                def dig (((cur get i) div pl) mod 10)
+                def pos (counts get dig)
+                out set pos (cur get i) end
+                counts set dig (pos add 1) end
+                0
+              ]
+            ])
+            def _cp (iota n each [ var [[i] cur set i (out get i) end 0 ] ])
+            place set 0 (pl mul 10) end
+            0
+          ] [0]
+        ]
+      ])
+      convert List cur
+    ]
+  ]
+]
+
+# Radix sort, most-significant-digit, base 10, recursive. Non-negative.
+def msd-go fn [
+  [place:Integer hi:Integer lo:Integer arr:Array] [Array] [
+    def cnt ((hi sub lo) add 1)
+    if ((cnt lte 1) or (place lt 1)) [ arr ] [
+      def counts (make Array (iota 11 each [drop 0]))
+      def _c1 (iota cnt each [
+        var [[t]
+          def dig (((arr get (lo add t)) div place) mod 10)
+          counts set (dig add 1) ((counts get (dig add 1)) add 1) end
+          0
+        ]
+      ])
+      def _ps (iota 10 each [
+        var [[v]
+          counts set (v add 1) ((counts get (v add 1)) add (counts get v)) end
+          0
+        ]
+      ])
+      # separate cursor array so the scatter does not clobber `counts`
+      # (the bucket boundaries are read back from `counts` to recurse).
+      def cur (make Array (iota 11 each [ var [[v] counts get v ] ]))
+      def tmp (make Array (iota cnt each [drop 0]))
+      def _c2 (iota cnt each [
+        var [[t]
+          def dig (((arr get (lo add t)) div place) mod 10)
+          def pos (cur get dig)
+          tmp set pos (arr get (lo add t)) end
+          cur set dig (pos add 1) end
+          0
+        ]
+      ])
+      def _cp (iota cnt each [ var [[t] arr set (lo add t) (tmp get t) end 0 ] ])
+      # recurse into each digit bucket [counts[v], counts[v+1])
+      def _rec (iota 10 each [
+        var [[v]
+          def b-lo (lo add (counts get v))
+          def b-hi (lo add ((counts get (v add 1)) sub 1))
+          def np (place div 10)
+          def _r (if (b-hi gt b-lo) [ arr b-lo b-hi np msd-go ] [ arr ])
+          0
+        ]
+      ])
+      arr
+    ]
+  ]
+]
+
+def radix-msd-sort fn [
+  [lst:List] [List] [
+    def n (lst size)
+    if (n lte 1) [ lst ] [
+      lst "radix-msd" ensure-non-neg
+      def mx (lst list-max)
+      def place (make Array [1])
+      def _ (iota 19 each [
+        var [[d] if (((place get 0) mul 10) lte mx) [ place set 0 ((place get 0) mul 10) end 0 ] [0] ]
+      ])
+      def arr (make Array lst)
+      def _s (arr 0 (n sub 1) (place get 0) msd-go)
+      convert List arr
+    ]
+  ]
+]
+
+# Bucket sort over Integers: scatter into value-span buckets, sort each
+# bucket by insertion, gather. (Distribution sort: ascending.)
+def bucket-sort fn [
+  [lst:List] [List] [
+    def n (lst size)
+    if (n lte 1) [ lst ] [
+      lst "bucket" ensure-ints
+      def mn (lst list-min)
+      def mx (lst list-max)
+      if (mn eq mx) [ lst ] [
+        def span ((mx sub mn) add 1)
+        # n buckets; bucket index = (x-mn)*n / span, clamped to n-1
+        def bcount (make Array (iota n each [drop 0]))
+        def arr (make Array lst)
+        def _bc (iota n each [
+          var [[i]
+            def raw ((((arr get i) sub mn) mul n) div span)
+            def bi (if (raw gte n) [(n sub 1)] [raw])
+            bcount set bi ((bcount get bi) add 1) end
+            0
+          ]
+        ])
+        # bucket start offsets (prefix sums)
+        def starts (make Array (iota n each [drop 0]))
+        def acc (make Array [0])
+        def _ps (iota n each [
+          var [[b]
+            starts set b (acc get 0) end
+            acc set 0 ((acc get 0) add (bcount get b)) end
+            0
+          ]
+        ])
+        # scatter (stable) into out by bucket
+        def out (make Array (iota n each [drop 0]))
+        def fill (make Array (iota n each [drop 0]))
+        def _sc (iota n each [
+          var [[i]
+            def raw ((((arr get i) sub mn) mul n) div span)
+            def bi (if (raw gte n) [(n sub 1)] [raw])
+            def pos ((starts get bi) add (fill get bi))
+            out set pos (arr get i) end
+            fill set bi ((fill get bi) add 1) end
+            0
+          ]
+        ])
+        # insertion-sort each bucket in place within out
+        def _is (iota n each [
+          var [[b]
+            def s (starts get b)
+            def cnt (bcount get b)
+            def _ins (iota cnt each [
+              var [[t]
+                def i (s add t)
+                def key (out get i)
+                def jc (make Array [i])
+                def _sh (iota cnt each [
+                  var [[u]
+                    def j (jc get 0)
+                    if (j gt s) [
+                      def prev (out get (j sub 1))
+                      if (prev gt key) [ out set j prev end  jc set 0 (j sub 1) end  0 ] [0]
+                    ] [0]
+                  ]
+                ])
+                out set (jc get 0) key end
+                0
+              ]
+            ])
+            0
+          ]
+        ])
+        convert List out
+      ]
+    ]
+  ]
+]
+
+# Bead (gravity) sort. Non-negative Integers; values fall like beads.
+def bead-sort fn [
+  [lst:List] [List] [
+    def n (lst size)
+    if (n lte 1) [ lst ] [
+      lst "bead" ensure-non-neg
+      def mx (lst list-max)
+      def arr (make Array lst)
+      # cnt[j] = number of elements strictly greater than column index j
+      def cnt (make Array (iota mx each [drop 0]))
+      def _c (iota mx each [
+        var [[j]
+          def c (make Array [0])
+          def _i (iota n each [
+            var [[i] if ((arr get i) gt j) [ c set 0 ((c get 0) add 1) end 0 ] [0] ]
+          ])
+          cnt set j (c get 0) end
+          0
+        ]
+      ])
+      # row r (descending order) value = number of columns with cnt[j] > r
+      def out (make Array (iota n each [drop 0]))
+      def _o (iota n each [
+        var [[r]
+          def v (make Array [0])
+          def _j (iota mx each [
+            var [[j] if ((cnt get j) gt r) [ v set 0 ((v get 0) add 1) end 0 ] [0] ]
+          ])
+          out set r (v get 0) end
+          0
+        ]
+      ])
+      # reverse (descending → ascending)
+      def res (make Array (iota n each [drop 0]))
+      def _rv (iota n each [ var [[i] res set i (out get ((n sub 1) sub i)) end 0 ] ])
+      convert List res
+    ]
+  ]
+]
+
+
+# --- joke / educational sorts ---------------------------------------
+
+# Bogosort — shuffle until sorted, with a hard safety cap. Uses a tiny
+# deterministic LCG (AQL has no ambient randomness), so it terminates for
+# small inputs and raises `bogo_giveup` past the cap.
+def bogo-cap 300000
+
+def bogo-sort fn [
+  [comp:Function lst:List] [List] [
+    def n (lst size)
+    if (n lte 1) [ lst ] [
+      def arr (make Array lst)
+      def seed (make Array [2463534242])
+      def done (make Array [false])
+      def _ (iota bogo-cap each [
+        var [[t]
+          if (done get 0) [0] [
+            def sorted (make Array [true])
+            def _ck (iota (n sub 1) each [
+              var [[i]
+                def c ((arr get i) (arr get (i add 1)) comp)
+                if (c gt 0) [ sorted set 0 false end 0 ] [0]
+              ]
+            ])
+            if (sorted get 0) [ done set 0 true end 0 ] [
+              def _sh (iota (n sub 1) each [
+                var [[k]
+                  def i ((n sub 1) sub k)
+                  def s (((seed get 0) mul 1103515245) add 12345)
+                  def s2 (s mod 2147483648)
+                  seed set 0 s2 end
+                  def j (s2 mod (i add 1))
+                  arr i j swap-at end
+                  0
+                ]
+              ])
+              0
+            ]
+          ]
+        ]
+      ])
+      if (done get 0) [ convert List arr ] [
+        def msg `Sort.bogo: gave up after ${bogo-cap} shuffles (n=${n}); use it only on tiny inputs`
+        raise bogo_giveup msg
+      ]
+    ]
+  ]
+]
+
+# Stooge sort — O(n^2.7), recursive.
+def stooge-go fn [
+  [box:Array hi:Integer lo:Integer arr:Array] [Array] [
+    def cmpf (box get 0)
+    def c ((arr get lo) (arr get hi) cmpf)
+    def _sw (if (c gt 0) [ arr lo hi swap-at end 0 ] [0])
+    def len ((hi sub lo) add 1)
+    def _r (if (len gt 2) [
+      def t (len div 3)
+      def _1 (arr lo (hi sub t) box stooge-go)
+      def _2 (arr (lo add t) hi box stooge-go)
+      def _3 (arr lo (hi sub t) box stooge-go)
+      arr
+    ] [ arr ])
+    arr
+  ]
+]
+
+def stooge-sort fn [
+  [comp:Function lst:List] [List] [
+    def n (lst size)
+    def arr (make Array lst)
+    def box (make Array [comp/r])
+    def _ (if (n gt 1) [ arr 0 (n sub 1) box stooge-go ] [ arr ])
+    convert List arr
+  ]
+]
+
+# Slowsort — "multiply and surrender", recursive, gloriously inefficient.
+def slow-go fn [
+  [box:Array hi:Integer lo:Integer arr:Array] [Array] [
+    def cmpf (box get 0)
+    if (lo gte hi) [ arr ] [
+      def m ((lo add hi) div 2)
+      def _1 (arr lo m box slow-go)
+      def _2 (arr (m add 1) hi box slow-go)
+      def c ((arr get hi) (arr get m) cmpf)
+      def _sw (if (c lt 0) [ arr hi m swap-at end 0 ] [0])
+      def _3 (arr lo (hi sub 1) box slow-go)
+      arr
+    ]
+  ]
+]
+
+def slow-sort fn [
+  [comp:Function lst:List] [List] [
+    def n (lst size)
+    def arr (make Array lst)
+    def box (make Array [comp/r])
+    def _ (if (n gt 1) [ arr 0 (n sub 1) box slow-go ] [ arr ])
+    convert List arr
+  ]
+]
+
+
+# --- introsort & timsort --------------------------------------------
+
+def floor-log2 fn [
+  [n:Integer] [Integer] [
+    def k (make Array [0])
+    def v (make Array [1])
+    def _ (iota n each [
+      var [[t] if (((v get 0) mul 2) lte n) [ v set 0 ((v get 0) mul 2) end  k set 0 ((k get 0) add 1) end  0 ] [0] ]
+    ])
+    k get 0
+  ]
+]
+
+# Heapsort over a sub-span arr[lo..hi] — introsort's guaranteed fallback.
+def sift-down-span fn [
+  [box:Array hi:Integer i:Integer lo:Integer arr:Array] [Array] [
+    def cmpf (box get 0)
+    def largest (make Array [i])
+    def li (((((i sub lo) mul 2) add 1) add lo))
+    def ri (((((i sub lo) mul 2) add 2) add lo))
+    def _l (if (li lte hi) [
+      def c ((arr get li) (arr get (largest get 0)) cmpf)
+      if (c gt 0) [ largest set 0 li end 0 ] [0]
+    ] [0])
+    def _r (if (ri lte hi) [
+      def c ((arr get ri) (arr get (largest get 0)) cmpf)
+      if (c gt 0) [ largest set 0 ri end 0 ] [0]
+    ] [0])
+    def lg (largest get 0)
+    def _s (if (lg neq i) [
+      arr i lg swap-at end
+      arr lo lg hi box sift-down-span
+    ] [ arr ])
+    arr
+  ]
+]
+
+def heap-span fn [
+  [box:Array hi:Integer lo:Integer arr:Array] [Array] [
+    def cnt ((hi sub lo) add 1)
+    def _b (iota (cnt div 2) each [
+      var [[t]
+        def i ((lo add ((cnt div 2) sub 1)) sub t)
+        arr lo i hi box sift-down-span
+        0
+      ]
+    ])
+    def _e (iota cnt each [
+      var [[t]
+        def e (hi sub t)
+        if (e gt lo) [
+          arr lo e swap-at end
+          arr lo lo (e sub 1) box sift-down-span
+          0
+        ] [0]
+      ]
+    ])
+    arr
+  ]
+]
+
+def intro-go fn [
+  [box:Array lim:Integer hi:Integer lo:Integer arr:Array] [Array] [
+    def cmpf (box get 0)
+    if (lo lt hi) [
+      if (lim eq 0) [ arr lo hi box heap-span ] [
+        def pivot (arr get hi)
+        def ic (make Array [lo])
+        def _ (iota (hi sub lo) each [
+          var [[t]
+            def j (lo add t)
+            def c ((arr get j) pivot cmpf)
+            if (c lt 0) [
+              def i (ic get 0)
+              arr i j swap-at end
+              ic set 0 (i add 1) end
+              0
+            ] [0]
+          ]
+        ])
+        def p (ic get 0)
+        arr p hi swap-at end
+        def _l (arr lo (p sub 1) (lim sub 1) box intro-go)
+        def _r (arr (p add 1) hi (lim sub 1) box intro-go)
+        arr
+      ]
+    ] [ arr ]
+  ]
+]
+
+def intro-sort fn [
+  [comp:Function lst:List] [List] [
+    def n (lst size)
+    def arr (make Array lst)
+    def box (make Array [comp/r])
+    def _ (if (n gt 1) [
+      def lim ((n floor-log2) mul 2)
+      arr 0 (n sub 1) lim box intro-go
+    ] [ arr ])
+    convert List arr
+  ]
+]
+
+# Timsort (core): sort by detecting natural ascending runs and merging
+# them left to right with the stable merge used by `Sort.merge`.
+def tim-sort fn [
+  [comp:Function lst:List] [List] [
+    def n (lst size)
+    if (n lte 1) [ lst ] [
+      def box (make Array [comp/r])
+      def cmpf (box get 0)
+      def arr (make Array lst)
+      def buf (make Array lst)
+      def bounds (make Array (iota (n add 1) each [drop 0]))
+      def nb (make Array [0])
+      def ip (make Array [0])
+      def _ (iota (n add 1) each [
+        var [[t]
+          if ((ip get 0) lt n) [
+            def st (ip get 0)
+            def j (make Array [(st add 1)])
+            def stopped (make Array [false])
+            def _run (iota n each [
+              var [[u]
+                if (stopped get 0) [0] [
+                  def jj (j get 0)
+                  if (jj lt n) [
+                    def c ((arr get (jj sub 1)) (arr get jj) cmpf)
+                    if (c lte 0) [ j set 0 (jj add 1) end 0 ] [ stopped set 0 true end 0 ]
+                  ] [ stopped set 0 true end 0 ]
+                ]
+              ]
+            ])
+            def re (j get 0)
+            bounds set (nb get 0) re end
+            nb set 0 ((nb get 0) add 1) end
+            ip set 0 re end
+            0
+          ] [0]
+        ]
+      ])
+      def merged-end (make Array [(bounds get 0)])
+      def _m (iota (nb get 0) each [
+        var [[r]
+          if (r gt 0) [
+            def me (merged-end get 0)
+            def re (bounds get r)
+            def _x (arr 0 me re buf box merge-span)
+            merged-end set 0 re end
+            0
+          ] [0]
+        ]
+      ])
+      convert List arr
+    ]
+  ]
+]
+
+
+# --- default ordering -----------------------------------------------
+
+# The recommended general-purpose sort (stable).
+def default-sort fn [
+  [comp:Function lst:List] [List] [
+    lst comp/r merge-sort
+  ]
+]
+
+
+# ====================================================================
+# NAMESPACE
+# ====================================================================
+
+export "Sort" {
+  # comparators
+  by-number:        by-number/r
+  by-string:        by-string/r
+  by-boolean:       by-boolean/r
+  by-generic:       by-generic/r
+  natural:          natural/r
+  case-insensitive: case-insensitive/r
+  reverse:          rev-cmp/r
+  by-key:           by-key-cmp/r
+
+  # predicate
+  is-sorted: is-sorted-fn/r
+
+  # comparison sorts
+  bubble:    bubble-sort/r
+  insertion: insertion-sort/r
+  selection: selection-sort/r
+  gnome:     gnome-sort/r
+  cocktail:  cocktail-sort/r
+  comb:      comb-sort/r
+  shell:     shell-sort/r
+  odd-even:  odd-even-sort/r
+  cycle:     cycle-sort/r
+  pancake:   pancake-sort/r
+  bitonic:   bitonic-sort/r
+  quick:     quick-sort/r
+  merge:     merge-sort/r
+  heap:      heap-sort/r
+  intro:     intro-sort/r
+  tim:       tim-sort/r
+
+  # joke / educational sorts (comparator-driven)
+  bogo:      bogo-sort/r
+  stooge:    stooge-sort/r
+  slow:      slow-sort/r
+
+  # distribution sorts (Integers, ascending; no comparator)
+  counting:    counting-sort/r
+  pigeonhole:  pigeonhole-sort/r
+  radix-lsd:   radix-lsd-sort/r
+  radix-msd:   radix-msd-sort/r
+  bucket:      bucket-sort/r
+  bead:        bead-sort/r
+
+  sort:      default-sort/r
+}

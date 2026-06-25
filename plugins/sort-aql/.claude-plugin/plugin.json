@@ -1,0 +1,10 @@
+{
+  "name": "sort-aql",
+  "description": "Agent guidance for calling the Sort sorting library correctly from AQL: the comparator-driven calling convention, the full algorithm and comparator API, verified copy-paste idioms, and fixes for common mistakes.",
+  "version": "0.1.0",
+  "author": { "name": "voxgig-aql" },
+  "homepage": "https://github.com/voxgig-aql/sort",
+  "repository": "https://github.com/voxgig-aql/sort",
+  "license": "MIT",
+  "keywords": ["aql", "sort", "sorting", "comparator", "skill", "agent"]
+}

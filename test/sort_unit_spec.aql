@@ -1,0 +1,163 @@
+# Example-based unit tests for sort — DECLARATIVE SPEC FORMAT.
+#
+# The spec-format sibling of `test/sort_unit_test.aql`. Where that file
+# drives checks imperatively (`Test.test` + `Assert.equal`), this one
+# expresses them as *data*: `TestSpec` values that `Test.run-spec` walks
+# and dispatches.
+#
+# A TestSpec is `{name, subject, cases, subs}`:
+#   - `subject` is the word to exercise, named as a dotted String
+#     (e.g. "Sort.natural"); the runner splits it on "." into a get-chain
+#     and dispatches the resolved word.
+#   - each case is `{name, in, out}`: `in` is spread onto the stack
+#     (deepest element first), the subject is dispatched, and the result
+#     is deep-compared (`deq`) against `out`.
+#
+# Subjects here are the COMPARATORS (called on two values) and the
+# DISTRIBUTION sorts (called on one list, no comparator) — the words
+# whose full argument list is plain data. The comparison sorts, which
+# take a comparator *function* argument, are covered imperatively in
+# `test/sort_unit_test.aql` and by property in `test/sort_prop_spec.aql`.
+#
+# Run:
+#   aql test/sort_unit_spec.aql
+
+import "aql:test" end
+import "./sort.aql" end
+
+
+def specs [
+
+  # --- comparators: sign of the ordering ----------------------------
+
+  {
+    name:    "by-number"
+    subject: "Sort.by-number"
+    cases: [
+      { name: "less"  in: [ 3 7 ] out: -1 }
+      { name: "greater" in: [ 7 3 ] out: 1 }
+      { name: "equal" in: [ 5 5 ] out: 0 }
+    ]
+    subs: []
+  }
+
+  {
+    name:    "by-string"
+    subject: "Sort.by-string"
+    cases: [
+      { name: "less"  in: [ "abc" "abd" ] out: -1 }
+      { name: "equal" in: [ "x" "x" ]     out: 0 }
+    ]
+    subs: []
+  }
+
+  {
+    name:    "by-boolean"
+    subject: "Sort.by-boolean"
+    cases: [
+      { name: "false-before-true" in: [ false true ] out: -1 }
+      { name: "equal"             in: [ true true ]  out: 0 }
+    ]
+    subs: []
+  }
+
+  # The headline utility: numeric runs compare by value, not by digit.
+  {
+    name:    "natural"
+    subject: "Sort.natural"
+    cases: [
+      { name: "file2-lt-file10" in: [ "file2" "file10" ] out: -1 }
+      { name: "x10-gt-x9"       in: [ "x10" "x9" ]       out: 1 }
+      { name: "prefix"          in: [ "a" "a1" ]         out: -1 }
+      { name: "equal"           in: [ "v1" "v1" ]        out: 0 }
+    ]
+    subs: []
+  }
+
+  {
+    name:    "case-insensitive"
+    subject: "Sort.case-insensitive"
+    cases: [
+      { name: "fold" in: [ "ABC" "abd" ] out: -1 }
+      { name: "tie"  in: [ "Hi" "hi" ]   out: 0 }
+    ]
+    subs: []
+  }
+
+  # --- distribution sorts: list in, sorted list out -----------------
+
+  {
+    name:    "counting"
+    subject: "Sort.counting"
+    cases: [
+      { name: "basic" in: [ [5 3 8 3 1 9 2 7] ] out: [1 2 3 3 5 7 8 9] }
+      { name: "empty" in: [ [] ]                out: [] }
+      { name: "negs"  in: [ [3 -1 -5 2 0] ]     out: [-5 -1 0 2 3] }
+    ]
+    subs: []
+  }
+
+  {
+    name:    "pigeonhole"
+    subject: "Sort.pigeonhole"
+    cases: [
+      { name: "basic" in: [ [5 3 8 3 1 9 2 7] ] out: [1 2 3 3 5 7 8 9] }
+    ]
+    subs: []
+  }
+
+  {
+    name:    "radix-lsd"
+    subject: "Sort.radix-lsd"
+    cases: [
+      { name: "multidigit" in: [ [1000 10 100 1 11 5 55] ] out: [1 5 10 11 55 100 1000] }
+    ]
+    subs: []
+  }
+
+  {
+    name:    "radix-msd"
+    subject: "Sort.radix-msd"
+    cases: [
+      { name: "multidigit" in: [ [1000 10 100 1 11 5 55] ] out: [1 5 10 11 55 100 1000] }
+    ]
+    subs: []
+  }
+
+  {
+    name:    "bucket"
+    subject: "Sort.bucket"
+    cases: [
+      { name: "basic" in: [ [5 3 8 3 1 9 2 7] ] out: [1 2 3 3 5 7 8 9] }
+    ]
+    subs: []
+  }
+
+  {
+    name:    "bead"
+    subject: "Sort.bead"
+    cases: [
+      { name: "basic" in: [ [5 3 8 3 1 9 2 7] ] out: [1 2 3 3 5 7 8 9] }
+    ]
+    subs: []
+  }
+
+]
+
+
+# --- run every spec ------------------------------------------------
+
+def _ (specs each [
+  var [[s]
+    s Test.run-spec end
+    0
+  ]
+])
+
+
+# --- summary -------------------------------------------------------
+
+"---" print
+"fail count: " print Test.fail-count end print
+0 Test.fail-count end Assert.equal end
+"all green" print

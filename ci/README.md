@@ -9,21 +9,24 @@ workflow changes are staged here and a maintainer promotes them.
 
 - **`test.yml`** — the intended `.github/workflows/test.yml`. It is the
   canonical, up-to-date workflow; the copy currently under
-  `.github/workflows/` is **stale** (it pins an older, drifted `AQL_REF`) and
-  is superseded by this one.
+  `.github/workflows/` is **stale** (it pins an older, drifted `AQL_REF` and
+  still runs the previous module's suites) and is superseded by this one.
 
 ### What changed vs the live `.github/workflows/test.yml`
 
-1. **`AQL_REF` bumped to `407feda…`** — the commit this library is now
-   verified against (interpreter, `aql check`, and `aql --compile` all clean
-   across every suite). The live file still pins `db828ec…`, which also
-   resolves the long-standing pin drift between it and the hook / `api.json`.
-2. **New gating `divergence` job** — runs `test/divergence/run.sh`, which
-   asserts every suite interprets, checks (0 errors), and matches under the
-   byte compiler. Self-contained (builds its own aql via a `codeload` tarball).
-3. **`consistency` job** also checks `test/divergence/run.sh`'s
-   `AQL_BYTECODE_REF` against `AQL_REF`, and references `ci/test.yml` as the
-   single source of truth.
+1. **`AQL_REF` bumped to `12a44e0…`** — the latest aql `main` commit, the
+   one this library is verified against (every suite interprets and byte
+   compiles to identical output).
+2. **Suites renamed** to `test/sort_*` and the static check points at
+   `sort.aql`.
+3. **`divergence` job** runs `test/divergence/run.sh`. The interpreter and
+   byte compiler are gating; `aql check` is **advisory** here (its static
+   analysis has known false positives on the first-class comparator
+   functions this library threads through every sort). Self-contained
+   (builds its own aql via a `codeload` tarball).
+4. **`consistency` job** checks the renamed `sort-aql` skill/plugin paths,
+   the JSON manifests, and that `AQL_REF` agrees across the hook,
+   `test/divergence/run.sh`'s `AQL_BYTECODE_REF`, and `api.json`'s prefix.
 
 ## Promoting it (maintainer, one-time)
 
@@ -32,7 +35,7 @@ PAT that has `workflow`, or the GitHub web UI):
 
 ```bash
 git mv ci/test.yml .github/workflows/test.yml
-git commit -m "ci: adopt aql 407feda; add gating divergence job"
+git commit -m "ci: adopt aql 12a44e0; run sort suites"
 git push
 ```
 

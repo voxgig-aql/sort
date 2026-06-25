@@ -1,215 +1,232 @@
 # Explanation
 
-Understanding-oriented discussion of how this bloom filter works and
-why it is built the way it is. Read this when you want the *why*; for
-the *what*, see the [Reference](reference.md), and for *how to get a
-job done*, the [How-to guides](how-to.md).
+Understanding-oriented discussion of how this sorting library works and
+why it is built the way it is. Read this when you want the *why*; for the
+*what*, see the [Reference](reference.md), and for *how to get a job
+done*, the [How-to guides](how-to.md).
 
 ---
 
-## What a bloom filter is for
+## What the library is for
 
-A bloom filter answers one question — *"have I seen this item?"* — using
-far less memory than storing the items themselves. It trades exactness
-for size: it will never miss an item it has seen (no false negatives),
-but it will occasionally claim to have seen an item it hasn't (a false
-positive). You choose the false-positive rate up front, and the filter
-sizes itself to meet it.
+It is a catalogue of sorting algorithms — every well-known comparison
+sort, the main distribution sorts, and a few joke sorts — over every AQL
+type, driven by a single small abstraction: the **comparator**. You pick
+an algorithm and an ordering, write them in AQL's data-first shape, and
+get back a new sorted list:
 
-This is the right tool when:
+```
+list Sort.<algo> comparator end   →   a new sorted List
+```
 
-- the set is large and you only need membership, not the items;
-- an occasional false positive is acceptable (you can re-check against
-  the real store on a hit);
-- you want cheap unions of independently-built sets (see
-  [Merging](#merging-filters)).
-
-It is the wrong tool when you need to enumerate members, delete them,
-or get an exact answer.
+The design goal is that the *ordering* and the *algorithm* are
+independent. Any comparator works with any comparison algorithm, and you
+swap one without touching the other. The rest of this page explains why
+that boundary is a comparator, why the sorts hand back new lists instead
+of mutating in place, and the AQL idioms that make both work.
 
 ---
 
-## How membership works
+## Why the design is comparator-driven
 
-The filter is a bit array of width `m`, all zero to start. Each item is
-run through `k` hash functions, each producing an index in `[0, m)`.
-`add` sets the bits at those `k` indices. `contains` checks whether
-*all* `k` bits for an item are set.
+A sort has to answer exactly one question about your data, over and over:
+*given two items, which comes first?* Everything else — how items are
+moved, how many passes are made, the recursion structure — belongs to the
+algorithm and is the same whatever you are sorting. So the library factors
+that one question out into a value you supply: the comparator.
 
+The payoff is a small surface that covers a large space. There is no
+`sort-numbers`, `sort-strings-descending`, `sort-by-length` family of
+words; there is one `Sort.quick` (and `Sort.merge`, `Sort.heap`, …) that
+takes whatever ordering you hand it. Orderings compose, too: `Sort.reverse`
+turns any comparator into its descending counterpart, and `Sort.by-key`
+turns a "how do I extract the sort key" function into a full comparator.
+You build the order you need from small pieces rather than reaching for a
+bespoke algorithm.
+
+This is the same separation C's `qsort` makes with its comparison
+callback, Python's `key=`/`cmp` parameters, and the JS `Array.sort`
+comparator — a well-worn boundary. What is particular to AQL is *how* a
+comparator is represented and passed, which the next sections cover.
+
+### What a comparator is
+
+A comparator is a two-argument function value. Given two items it returns
+an **Integer** whose **sign** is the answer: negative if the first item
+sorts before the second, zero if they are equivalent, positive if after.
+Only the sign matters — magnitude is ignored — so the contract is exactly
+that of the built-in `cmp`.
+
+```aql
+def by-length fn [
+  [b:Any a:Any] [Integer] [ (a size) (b size) cmp ]
+]
 ```
-add "alice"      → bits {h1, h2, … hk} set to 1
-contains "alice" → are bits {h1, h2, … hk} all 1?  → yes
-contains "carol" → are bits {g1, g2, … gk} all 1?  → some 0 → no
-```
 
-### Why there are no false negatives
-
-`add` only ever turns bits *on*; nothing turns them off. So once an
-item's `k` bits are set, they stay set, and a later `contains` for that
-same item must find all of them set. A "definitely not present" answer
-(`false`) is therefore always trustworthy.
-
-### Why there are false positives
-
-Different items can hash to overlapping bits. If items you *did* add
-happen to collectively set all `k` bits that some *un-added* item maps
-to, `contains` returns `true` for that un-added item. The chance of this
-rises as the filter fills, which is exactly what the sizing math
-controls.
+Two conventions are worth internalising. First, the body is written in
+terms of `a` (the *earlier* item) and `b` (the *later* one), so "`a`
+before `b` ⇒ negative" reads naturally; AQL's rule that the first
+signature parameter is the top of the stack is what makes `a` the earlier
+item when a sort invokes `xi xj comp`. Second, the built-in comparators
+defer to `cmp` rather than computing `a - b`. A three-way `cmp` never
+subtracts, so there is no risk of integer overflow flipping a comparison —
+a classic bug in hand-rolled numeric comparators.
 
 ---
 
-## Sizing the filter
+## Why sorts return new lists
 
-`make` takes a target capacity `n` (how many distinct items you expect)
-and a target false-positive rate `p`, and derives the two structural
-parameters:
+Every algorithm copies its input into a fresh working Array, sorts the
+copy, and returns it as a new List. The input list is never touched. This
+is the opposite of a traditional in-place sort, and it is a deliberate
+choice:
 
-- **`m`, the bit width** — `m = ceil( -n · ln(p) / (ln 2)² )`. Smaller
-  `p` or larger `n` means more bits.
-- **`k`, the hash count** — `k = round( (m / n) · ln 2 )`, the value
-  that minimises the false-positive rate for the chosen `m` and `n`.
+- **Values stay values.** A function that quietly rewrites its argument is
+  a source of action-at-a-distance bugs. Returning a new list keeps a sort
+  a pure mapping from input to output — easy to reason about, safe to call
+  on a list someone else still holds.
+- **It matches how the library is tested.** Every algorithm is
+  cross-checked against the stable `Sort.merge` reference and asserted not
+  to mutate its input. A non-mutation contract is only meaningful if it
+  holds uniformly, so all sorts honour it.
+- **The cost is bounded and predictable.** The copy is O(n) space, which
+  the algorithms would often need for scratch buffers anyway (merge sort's
+  merge buffer, the distribution sorts' count arrays).
 
-For `{n: 1000, p: 0.01}` this yields `m = 9586`, `k = 7`. The
-[Reference](reference.md#bloommake) lists more worked values. Because
-`k = round(log₂(1/p))`, a `p` above `0.5` rounds `k` to `0` and is
-meaningless — keep `p` in `(0, 0.5]`, and in practice well below it.
-
-The filter stores `n` and `p` alongside `m` and `k` so it can report
-its own configuration via `params` and so `merge` can check
-compatibility.
-
----
-
-## Hashing: double hashing from two FNV variants
-
-The module needs `k` independent-looking hash functions but computes
-only two real hashes. It derives index `i` as:
-
-```
-index_i = (h1 + i · h2) mod m        for i in 0 … k-1
-```
-
-`h1` and `h2` come from the native FNV-1a words in `aql:bin-util`:
-`h1` is `BinUtil.fnv32` of the stringified item, and `h2` is the high
-32 bits of `BinUtil.fnv64`, OR'd with 1 so the stride is odd and
-covers all residues mod `m`. This "double hashing" gives `k`
-well-spread indices at the cost of two hashes rather than `k`, a
-standard bloom-filter technique. (Earlier versions of this module
-hand-rolled FNV over a 95-character printable-ASCII lookup table
-because the runtime exposed no character-code or hash words; the
-native words handle any string and disperse better.) FNV is not a
-security-grade hash — the filter is for membership, not cryptography.
+The practical consequence for callers is the one rule from the
+[Tutorial](tutorial.md#step-5--sorts-return-a-new-list): always **bind the
+result** (`def sorted (xs Sort.quick … end)`). Reading the original
+variable after "sorting" it gives you the original, unsorted list, because
+nothing wrote to it.
 
 ---
 
-## Estimating cardinality
+## Why distribution sorts need no comparator
 
-`count` estimates how many distinct items were added, using the
-Swamidass–Baldi estimator:
+The distribution sorts — `counting`, `pigeonhole`, `radix-lsd`,
+`radix-msd`, `bucket`, `bead` — do not take a comparator at all. They do
+not compare items against each other; they use each item's **value** as an
+index, scattering items into counts or buckets and reading them back in
+order. That is how they break the O(n log n) comparison-sort lower bound:
+they exploit knowledge a comparator deliberately hides, namely that the
+keys are integers in a known range.
 
-```
-n_est = -(m / k) · ln(1 - X/m)
-```
-
-where `X` is the number of set bits. The intuition: a fuller bit array
-implies more inserts, but with diminishing returns as collisions
-accumulate. The implementation guards the saturated case (`X = m`,
-where the logarithm would blow up) by returning the raw `added` counter
-instead.
-
-This is why `count` is an *estimate* and generally reads a little below
-the true insert count as the filter fills. If you need the exact
-number of `add` calls, read the `added` field instead (`bf.added`,
-also carried in the [`encode`](reference.md#bloomencode) snapshot).
-An empty filter estimates exactly `0`.
+The flip side is that this only works for integers (and, for radix and
+bead, non-negative ones), so these words validate their input and raise
+`bad_input` rather than silently misbehaving. The comparator-driven sorts
+and the distribution sorts are thus two answers to two different
+situations — arbitrary orderings of arbitrary data versus integer keys —
+and the library ships both.
 
 ---
 
-## Merging filters
+## The AQL idioms it rests on
 
-Two filters built with the same `(n, p)` share the same `m` and `k`,
-which means their bit arrays are positionally comparable: bit `i` means
-the same thing in both. `merge` ORs the source's bits into the target,
-so the result contains every item either filter held. This is what
-makes bloom filters attractive for distributed counting — workers each
-build a filter, and a coordinator unions them with no re-hashing.
+The comparator abstraction is clean in principle, but making it work in
+AQL leans on a few language facts worth understanding.
 
-`merge` insists on matching `m` and `k` because OR-ing arrays of
-different widths, or built with different hash counts, would be
-meaningless. The check is a guard against silently-wrong results.
+### Postfix, terminated calls
+
+AQL is not C/Python/JS: there is no `sort(list, cmp)` and no
+`list.sort(cmp)`. A call is **data first, verb next, arguments after**,
+terminated with `end` (or wrapped in parens):
+
+```aql
+list Sort.quick Sort.by-number end
+```
+
+Words dispatch forward — they look ahead and collect arguments — so the
+terminator is load-bearing. Drop the `end` and `Sort.quick` swallows
+whatever token follows it as if it were the comparator, giving a wrong
+result or a dispatch error. The `(… )` parentheses count as a terminator,
+which is why `(xs Sort.quick Sort.by-number)` works too.
+
+### Function values and `/r`
+
+A comparator has to be passed *as a value* — handed to the sort to call
+later — not invoked at the call site. AQL's default is to invoke: a bare
+word runs. The `/r` suffix is what defers it, parking the word as a value
+instead of calling it. So your own comparator and the built-in `cmp` are
+passed `mycmp/r`, `cmp/r`. The comparators in the `Sort` namespace
+(`Sort.by-number`, …) are *already* values in the namespace map, so they
+are passed bare — adding `/r` to them is the common mistake in the other
+direction.
+
+### The single-module requirement
+
+A comparator is a function value, and when a sort invokes it, AQL resolves
+the comparator's free words — any helper it calls — in **the module that
+runs it**. The library's `Sort.natural`, for instance, calls a private
+digit-run scanner; that scanner has to be visible where `natural` actually
+executes. This is why the comparators and the algorithms live in the same
+single module: a comparator's helpers must resolve in the running module,
+so the library keeps them together rather than splitting orderings and
+algorithms across files. (For your own comparators the same fact is
+benign: define the comparator and any helper it uses in the script that
+runs the sort, and they resolve.)
+
+### Box-threading comparators through recursion
+
+The divide-and-conquer sorts (`quick`, `merge`, `heap`, `intro`,
+`bitonic`, `tim`, and the recursive joke sorts) recurse, and each
+recursive call needs the comparator. AQL's handling of a function
+*parameter* parked with `/r` is one-shot, which does not survive being
+threaded down a recursion. The library sidesteps this by wrapping the
+comparator in a one-cell Array — a "box" — built once at the top
+(`make Array [comp/r]`) and passed down as a plain Array. Each recursive
+frame reads the comparator back out with `def cmpf (box get 0)` and
+invokes it as `xi xj cmpf`. Passing a plain Array sidesteps the one-shot
+parameter restriction and keeps the static checker happy, so the
+comparator stays callable all the way down. This is an implementation
+detail — callers never see the box — but it explains a recurring shape in
+the source.
+
+### Bounded loops instead of `while`
+
+AQL offers no `while`, so the data-dependent loops (gnome's cursor walk,
+comb's gap shrink, bogo's shuffle, …) are written as bounded `iota` loops
+with an explicit state cell, where the bound is a proven worst-case step
+count for that algorithm. The loop always reaches the sorted state and
+then idles for the remaining iterations. This is why, for example, `bogo`
+has a hard cap and raises `bogo_giveup` rather than looping forever — there
+is no unbounded loop to run.
 
 ---
 
 ## Design choices specific to this library
 
-### Packed bit storage
+### `Sort.merge` as the reference
 
-Bits are packed into an `Array` of integer words, 63 bits per word
-(bit 63 is the sign bit; staying out of it keeps every word a plain
-non-negative Integer). The Array is fixed-extent and mutated in place
-through `set`, and the word-level operations come from `aql:bin-util`:
-`BinUtil.set`/`BinUtil.test` for single bits, `BinUtil.popcount` for
-`count`, and `BinUtil.bor` for `merge` — so the formerly per-bit
-`O(m)` walks now touch one word per 63 bits. Memory is `O(m/63)`
-regardless of load.
+Merge sort is the stable, predictable O(n log n) implementation, and the
+test suite treats it as ground truth: every other algorithm is checked to
+produce the same ordering as `Sort.merge` on the same input. `Sort.sort`,
+the recommended default, is currently merge sort for exactly this reason —
+it is the one whose correctness the rest of the library is measured
+against.
 
-Earlier versions used a sparse map keyed by stringified bit index,
-because the runtime then had no mutable indexed container and no
-bitwise words outside core. With `Array` and the `bin-util` second
-tier, the packed layout is both the simpler and the faster choice.
+### Stability where it is claimed
 
-One subtlety: the `bits` field is declared by *type* (`bits: Array`)
-rather than given a schema default, and every constructor passes a
-fresh Array. A class-field default is evaluated once, at class
-definition, and that single value would be shared by every instance —
-a mutable default would silently alias all filters together (see
-`dx-report.md` §2).
+`merge`, `tim`, and the simple adjacent-swap sorts (`insertion`, `bubble`,
+`cocktail`, `gnome`, `odd-even`) preserve the input order of equal
+elements; the [Reference](reference.md#comparison-sorts) marks which.
+Stability matters when you sort by one key and want ties broken by a
+previous ordering — sort by the secondary key first with a stable sort,
+then by the primary. The default `Sort.sort` is stable so this composition
+just works.
 
-### Mutation in place
+### Raising coded errors
 
-`add` and `merge` mutate the filter instance in place (and also return
-it). This is deliberate: a filter is a large accumulator, and copying it
-on every insert would be wasteful. Callers that want an independent copy
-should round-trip through `encode`/`decode` or build a fresh filter.
-
-### Raising errors
-
-Failures raise coded errors with `raise`: `bad_input` from `make`,
-`incompatible_merge` from `merge`, `bad_payload` from `decode`.
-Handlers catch them with `do […] error […]` and read `code`/`message`
-(plus any payload fields) off the Error value.
-
-Two defensive idioms in `bloom.aql` date from runtime sharp edges that
-have since been fixed upstream (both documented with repros in
-[`dx-report.md`](../dx-report.md)): the raise *message* is bound with
-`def` first (older builds' `raise` did not collect a template-string
-literal), and every guard `if` carries an explicit empty else `[]`
-(older builds eagerly forward-collected a `def` statement following an
-else-less `if`, which could pre-empt the guard). Both spellings remain
-correct on every build, so they are kept.
-
-Historical note: on aql `db828ec` there was no way to raise a custom
-error at all, and this module signalled merge mismatches by
-dispatching a descriptively-named undefined word
-(`bloom-merge-requires-equal-m`). The `raise` word landed after that
-build and the workaround is retired.
-
-### `if` is always written all-forward
-
-Throughout `bloom.aql`, `if` is written `if cond [then] [else]` with
-every argument forward of the word. Both the all-forward and the
-all-stack forms select the correct branch; only the *mixed* form, with
-`if` between the condition and its branches (`cond if […] […]`),
-silently takes the else branch. Keeping `if` and its operands on the
-same side sidesteps that trap — and as noted above, an `if` used as a
-statement always gets an explicit else, even an empty one. This is
-otherwise invisible to callers.
+The distribution sorts validate their input and `bogo` enforces its cap by
+`raise`-ing coded errors: `bad_input` for a non-Integer / negative /
+out-of-range element, `bogo_giveup` for an exhausted shuffle budget.
+Handlers catch them with `do […] error […]` and read `code` / `message`
+off the Error value. Coded errors let a caller distinguish "you gave me the
+wrong kind of data" from a bug, and dispatch on the code with `case`.
 
 ---
 
 ## Further reading
 
-- [Tutorial](tutorial.md) — build your first filter step by step.
+- [Tutorial](tutorial.md) — sort your first list step by step.
 - [How-to guides](how-to.md) — task-focused recipes.
-- [Reference](reference.md) — the exact API.
+- [Reference](reference.md) — every algorithm and comparator, exactly.

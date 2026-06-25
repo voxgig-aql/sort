@@ -19,8 +19,9 @@ log() { echo "[session-start] $*" >&2; }
 # Keep this in lockstep with the workflow's AQL_REF (the consistency CI job
 # fails if they drift). The canonical workflow currently lives in ci/test.yml
 # pending promotion to .github/workflows/ (see ci/README.md). Full 40-char
-# commit so the build is reproducible.
-AQL_REF=407fedad2ea2b30c3dde2f29cfbe60e55f94db4e
+# commit so the build is reproducible. This is the latest aql `main` at the
+# time the module was written (2026-06-24).
+AQL_REF=12a44e0c6ca3f49cd35a871b573fd96bc13d7fd6
 BIN_DIR="$HOME/.local/bin"
 AQL="$BIN_DIR/aql"
 
@@ -40,8 +41,11 @@ else
   log "Building aql @ $AQL_REF from source (one-time; cached afterwards)…"
   mkdir -p "$BIN_DIR"
   src="$(mktemp -d)"
-  if git clone --quiet https://github.com/aql-lang/aql "$src" \
-     && git -C "$src" checkout --quiet "$AQL_REF"; then
+  # Fetch as a source tarball from codeload.github.com — works even where a
+  # raw `git clone` of aql-lang/aql is blocked by an egress proxy (the same
+  # method test/divergence/run.sh uses).
+  if curl -fsSL "https://codeload.github.com/aql-lang/aql/tar.gz/$AQL_REF" \
+       | tar -xz -C "$src" --strip-components=1; then
     ( cd "$src/cmd/go" \
       && GOFLAGS=-mod=mod go build \
            -ldflags "-X github.com/aql-lang/aql/cmd/go.Version=${AQL_REF}" \
@@ -56,9 +60,9 @@ fi
 
 # Fast confidence check: run the smoke test if aql is usable. Never fail the
 # session on a check error.
-if [ -x "$AQL" ] && [ -f "$CLAUDE_PROJECT_DIR/test/bloom_smoke_test.aql" ]; then
-  if ( cd "$CLAUDE_PROJECT_DIR" && "$AQL" test/bloom_smoke_test.aql >/dev/null 2>&1 ); then
-    log "Smoke check passed (aql test/bloom_smoke_test.aql)."
+if [ -x "$AQL" ] && [ -f "$CLAUDE_PROJECT_DIR/test/sort_smoke_test.aql" ]; then
+  if ( cd "$CLAUDE_PROJECT_DIR" && "$AQL" test/sort_smoke_test.aql >/dev/null 2>&1 ); then
+    log "Smoke check passed (aql test/sort_smoke_test.aql)."
   else
     log "NOTE: smoke check did not pass; toolchain may be incomplete."
   fi

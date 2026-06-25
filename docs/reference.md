@@ -1,254 +1,208 @@
 # Reference
 
-Technical description of the `bloom-filter` module's public surface.
-This page is information-oriented: it states what each word is, its
-stack signature, and what it returns. For *why* the filter behaves the
-way it does, see [Explanation](explanation.md); for goal-directed
-recipes, see the [How-to guides](how-to.md).
+Technical description of the `sort` module's public surface. This page is
+information-oriented: it states what each word is, its call shape, what it
+returns, and — for the algorithms — stability, complexity, and
+constraints. For *why* the library is built this way, see
+[Explanation](explanation.md); for goal-directed recipes, the
+[How-to guides](how-to.md).
 
 > **AI agents:** [AGENTS.md](../AGENTS.md) condenses the calling
 > convention, idioms, and common mistakes for machine use.
 
-The module exports a single namespace, `Bloom`, plus the `BloomFilter`
-type. Import it with:
+The module exports a single namespace, `Sort`. Import it with:
 
 ```aql
-import "./bloom.aql"
+import "./sort.aql"
 ```
 
-(No `end` is required after `import` on the pinned build; a trailing
-`end` is harmless.) A consuming script does **not** need to import
-`aql:math-util`, `aql:array-util`, `aql:bin-util`, or `aql:struct-util`
-itself — `bloom.aql` imports them internally.
+(No `end` is required after `import` on the pinned build; a trailing `end`
+is harmless.) A consuming script does **not** need to import
+`aql:string-util` or `aql:math-util` itself — `sort.aql` imports them
+internally.
 
 ---
 
 ## Calling convention
 
-Every operation is a forward-dispatched word and must be terminated
-with `end` (or wrapped in parentheses) at the call site, e.g.
-`bf Bloom.add "x" end` or `(bf Bloom.add "x")`. Without a terminator
-the word collects the following token as an argument. This is general
-AQL forward-precedence behaviour, not specific to this module.
+Every operation is a forward-dispatched word and must be terminated with
+`end` (or wrapped in parentheses) at the call site, e.g.
+`xs Sort.quick Sort.by-number end` or `(xs Sort.quick Sort.by-number)`.
+Without a terminator the word collects the following token as an argument.
+This is general AQL forward-precedence behaviour, not specific to this
+module.
 
-Argument order follows the AQL rule "first signature parameter is the
-top of the stack". The call-site columns below show the natural
-left-to-right order to write.
+The shape is **data first**, then the verb, then the comparator (for the
+comparison and joke sorts; the distribution sorts take none):
+
+```
+list Sort.<algo> comparator end   →   List (new, sorted; input unchanged)
+list Sort.<algo>            end    →   List       (distribution sorts)
+```
+
+### Passing a comparator
+
+| You want to use… | Write it as | Why |
+|---|---|---|
+| a comparator from this namespace | `Sort.by-number` (bare) | already a value in the namespace map |
+| your own comparator word | `mycmp/r` | `/r` hands the word over as a value instead of invoking it |
+| the built-in `cmp` | `cmp/r` | same — `/r` defers the call |
+
+### No mutation
+
+Every algorithm returns a **new** sorted `List`; the input `List` is never
+modified. This is the opposite of an in-place library. Always bind the
+result (`def s (xs Sort.quick … end)`); the original is unchanged.
 
 ---
 
-## Types
+## Comparators
 
-### `BloomFilter`
+A comparator is a two-argument function value with signature
+`[b:T a:T] [Integer]`: given two items it returns a negative / zero /
+positive Integer when the first sorts before / equal to / after the
+second. Only the sign matters — the same contract as the built-in `cmp`.
+The defaults defer to `cmp` (a three-way compare that never subtracts, so
+there is no integer-overflow risk).
 
-A sealed `class` instance — the filter. Fields:
+| Call | Returns | Order |
+|------|---------|-------|
+| `a b Sort.by-number end` | `Integer` | ascending numeric (Integer or Float) |
+| `a b Sort.by-string end` | `Integer` | lexicographic (code-point) |
+| `a b Sort.by-boolean end` | `Integer` | `false` before `true` |
+| `a b Sort.by-generic end` | `Integer` | polymorphic via `cmp` |
+| `a b Sort.natural end` | `Integer` | alphanumeric: embedded digit runs compare numerically, so `"file2" < "file10"` |
+| `a b Sort.case-insensitive end` | `Integer` | case-folded lexicographic |
 
-| Field   | Type     | Meaning                                            |
-|---------|----------|----------------------------------------------------|
-| `n`     | Integer  | Target capacity (expected number of distinct items)|
-| `p`     | Float    | Target false-positive probability                  |
-| `m`     | Integer  | Derived bit-array width                             |
-| `k`     | Integer  | Derived number of hash functions                   |
-| `added` | Integer  | Count of `add` calls made against this filter      |
-| `bits`  | Array    | Packed bit storage — 63 bits per integer word      |
+### Combinators
 
-Instances are created only through `Bloom.make`. Treat the fields as
-read-only; mutate exclusively through the namespace words. (The class
-is sealed and strictly typed, so writing an unknown field or a
-mis-typed value is a loud error.)
+Each returns a **new** comparator (a closure over its argument), so they
+compose — e.g. `(length-of/r Sort.by-key) Sort.reverse`.
 
-`bits` is internal: an `Array` of `ceil(m / 63)` integer words, bit
-`i` living at bit `i mod 63` of word `i div 63`. Bit 63 (the sign
-bit) is never used, so every word stays a plain non-negative Integer.
+| Call | Args | Returns | Effect |
+|------|------|---------|--------|
+| `comp Sort.reverse end` | `comp:Comparator` | `Comparator` | reverses `comp` (descending) |
+| `keyfn Sort.by-key end` | `keyfn:Function` | `Comparator` | orders items by the key `keyfn` extracts, compared with `cmp` |
+
+```aql
+print (([3 1 2] Sort.quick (Sort.by-number Sort.reverse) end)) end   # => [3, 2, 1]
+def len-of fn [[s:Any] [Integer] [ s size ]]
+print ((["bbb" "a" "cc"] Sort.merge (len-of/r Sort.by-key) end)) end # => ["a", "cc", "bbb"]
+```
 
 ---
 
-## Words
+## Comparison sorts
 
-### `Bloom.make`
+`list Sort.<algo> comparator end → List`. All produce the same ordering
+for a given comparator; they differ in stability and cost. *Stable* means
+equal elements keep their input order. Complexities are average-case
+unless noted; `n` is the list length.
 
-Construct a filter sized for a target capacity and false-positive rate.
+| Algorithm | Stable | Time | Space | Notes |
+|-----------|--------|------|-------|-------|
+| `bubble`    | yes | O(n²) | O(n) | adjacent-swap passes |
+| `insertion` | yes | O(n²), O(n) on nearly-sorted | O(n) | grows a sorted prefix |
+| `selection` | no  | O(n²) | O(n) | selects each minimum in turn |
+| `gnome`     | yes | O(n²) | O(n) | single back-and-forth cursor |
+| `cocktail`  | yes | O(n²) | O(n) | bidirectional bubble |
+| `comb`      | no  | O(n²) worst, ~O(n log n) typical | O(n) | shrinking-gap bubble |
+| `shell`     | no  | O(n²) worst (halving gaps) | O(n) | gapped insertion |
+| `odd-even`  | yes | O(n²) | O(n) | brick / phase pairs |
+| `cycle`     | no  | O(n²) | O(n) | minimal writes |
+| `pancake`   | no  | O(n²) | O(n) | prefix-flip the maximum into place |
+| `bitonic`   | no  | O(n log²n) | O(n) | sorting network, generalised to **any** length |
+| `quick`     | no  | O(n log n), O(n²) worst | O(n) | Lomuto partition on the last element |
+| `merge`     | **yes** | O(n log n) | O(n) | **the reference** other sorts are checked against |
+| `heap`      | no  | O(n log n) | O(n) | binary max-heap |
+| `intro`     | no  | O(n log n) **worst case** | O(n) | quicksort with a heapsort fallback |
+| `tim`       | **yes** | O(n log n), O(n) on nearly-sorted | O(n) | natural-run detection + stable merge |
+| `sort`      | **yes** | O(n log n) | O(n) | recommended default (currently stable merge) |
 
-| | |
-|--|--|
-| **Call**    | `{n: Integer, p: Float} Bloom.make end` |
-| **Stack in**| an options Map with keys `n` and `p` |
-| **Returns** | `BloomFilter` |
-| **Errors**  | raises `bad_input` when `n` is not an Integer ≥ 1 or `p` is not a Float in `(0, 0.5]` |
-
-`m` and `k` are derived from `n` and `p` (see
-[Explanation §Sizing](explanation.md#sizing-the-filter)). The bounds
-are enforced: a `p` above `0.5` would round `k` toward `0`, so it is
-rejected rather than accepted uselessly.
+The space column is O(n) throughout because each algorithm copies the
+input into a fresh working Array (the input is never mutated) even when
+the underlying ordering is "in place" on that copy.
 
 ```aql
-def bf ({n: 1000, p: 0.01} Bloom.make end)
-print ((bf Bloom.params end)) end
-# => {k:7 m:9586 n:1000 p:0.01}
+print (([5 3 8 1] Sort.quick Sort.by-number end)) end   # => [1, 3, 5, 8]
+print (([5 3 8 1] Sort.sort  Sort.by-number end)) end   # => [1, 3, 5, 8]
 ```
 
-### `Bloom.add`
+---
 
-Insert an item. Any value is accepted; it is stringified internally
-before hashing.
+## Distribution sorts
 
-| | |
-|--|--|
-| **Call**    | `bf Bloom.add item end` |
-| **Stack in**| `BloomFilter`, then the item (`Any`) |
-| **Returns** | the same `BloomFilter`, mutated in place |
-| **Effect**  | sets `k` bits; increments `added` by 1 |
+`list Sort.<algo> end → List`. These take **no comparator** and order
+**Integers ascending** by counting or bucketing rather than comparing.
+`k` is the value range (`max − min + 1`); `d` is the number of digits in
+the maximum.
 
-`add` mutates the filter it is given and also returns it, so the
-return value and the argument are the same object. Adding the same
-item twice sets no new bits but still increments `added`.
+| Algorithm | Time | Space | Constraint |
+|-----------|------|-------|------------|
+| `counting`   | O(n + k) | O(n + k) | Integers; negatives OK |
+| `pigeonhole` | O(n + k) | O(n + k) | Integers; negatives OK |
+| `radix-lsd`  | O(d·(n + 10)) | O(n) | **non-negative** Integers (base 10), stable |
+| `radix-msd`  | O(d·(n + 10)) | O(n) | **non-negative** Integers (base 10), recursive |
+| `bucket`     | O(n + k) average | O(n) | Integers; value-range buckets, insertion-sorted then gathered |
+| `bead`       | O(n·max) | O(n·max) | **non-negative** Integers (gravity sort) |
 
-### `Bloom.contains`
-
-Test membership.
-
-| | |
-|--|--|
-| **Call**    | `bf Bloom.contains item end` |
-| **Stack in**| `BloomFilter`, then the item (`Any`) |
-| **Returns** | `Boolean` |
-
-`false` means the item was **definitely never added**. `true` means
-the item was **probably added** — it may be a false positive at
-approximately rate `p`. There are no false negatives. See
-[Explanation §No false negatives](explanation.md#why-there-are-no-false-negatives).
+`counting` and `pigeonhole` raise `bad_input` on a non-Integer element or
+a value range over 1e8. The radix family and `bead` raise `bad_input` on a
+non-Integer or a **negative** element.
 
 ```aql
-def _ (bf Bloom.add "alice" end)
-print ((bf Bloom.contains "alice" end)) end   # => true
-print ((bf Bloom.contains "carol" end)) end   # => false
+print (([170 45 75 90 2 802] Sort.radix-lsd end)) end   # => [2, 45, 75, 90, 170, 802]
+print (([5 -2 8 -1 0] Sort.counting end)) end           # => [-2, -1, 0, 5, 8]
 ```
 
-### `Bloom.count`
+---
 
-Estimate the number of distinct items added.
+## Joke / educational sorts
 
-| | |
-|--|--|
-| **Call**    | `bf Bloom.count end` |
-| **Stack in**| `BloomFilter` |
-| **Returns** | `Integer` (estimate) |
+`list Sort.<algo> comparator end → List`. Correct, but deliberately
+inefficient — for demonstration, not production.
 
-Uses the Swamidass–Baldi estimator over the set-bit population, with a
-guard that returns the exact `added` count when every bit is set. The
-result is an **approximation** and typically drifts below the true
-insert count as the filter fills. An empty filter counts `0`. Cost is
-one native popcount per 63-bit word — `O(m/63)`.
-
-### `Bloom.params`
-
-Return the filter's parameters as a Map.
-
-| | |
-|--|--|
-| **Call**    | `bf Bloom.params end` |
-| **Stack in**| `BloomFilter` |
-| **Returns** | `Map` with keys `n`, `p`, `m`, `k` |
+| Algorithm | Time | Notes |
+|-----------|------|-------|
+| `stooge` | O(n^2.71) | recursive; sorts thirds in a fixed pattern |
+| `slow`   | superpolynomial | "multiply and surrender"; recursive |
+| `bogo`   | unbounded (capped) | shuffle-until-sorted with a deterministic LCG and a hard cap; raises `bogo_giveup` past the cap — use only on tiny inputs |
 
 ```aql
-def ps (bf Bloom.params end)
-print ((ps "m" get)) end   # => 9586
+print (([2 1] Sort.bogo Sort.by-number end)) end   # => [1, 2]
 ```
 
-### `Bloom.merge`
+---
 
-Union two filters into the first.
+## Predicate
 
-| | |
-|--|--|
-| **Call**    | `a Bloom.merge b end` |
-| **Stack in**| target `BloomFilter` `a`, then source `BloomFilter` `b` |
-| **Returns** | `a`, now containing every bit that was set in `a` or `b` |
-| **Effect**  | mutates `a` in place; `b` is unchanged; `a.added` becomes `a.added + b.added` |
-| **Errors**  | raises `incompatible_merge` if `a` and `b` differ on `m` or `k` |
+### `Sort.is-sorted`
 
-Both filters must have identical `m` and `k`, which happens
-automatically when both were built with the same `(n, p)`. After a
-merge, every item present in `a` or `b` reads as contained. The union
-itself is one bitwise OR per 63-bit word.
-
-The error message names the mismatched parameter and both values, e.g.
-`Bloom.merge: filters disagree on m (9586 vs 4793); build both with
-the same (n, p)`. Trap it with `do […] error […]` (read `e get code` /
-`e get message`) or assert it with `Assert.throws`.
-
-### `Bloom.encode`
-
-Serialize the filter to a jsonic-style string snapshot.
+Test whether a list is already ordered under a comparator.
 
 | | |
 |--|--|
-| **Call**    | `bf Bloom.encode end` |
-| **Stack in**| `BloomFilter` |
-| **Returns** | `String` |
-
-The string carries `n`, `p`, `m`, `k`, `added`, and the sorted list of
-set bit indices. Cost is `O(m)`.
+| **Call**    | `list Sort.is-sorted comparator end` |
+| **Stack in**| a `List`, then a comparator |
+| **Returns** | `Boolean` — `true` iff `list` is ordered under the comparator |
 
 ```aql
-print ((bf Bloom.encode end)) end
-# => {added:1 k:7 m:9586 n:1000 p:0.01 set:[223 1110 2827 3714 4601 6318 7205]}
-```
-
-The snapshot round-trips through `Bloom.decode`. (Exact bit indices
-depend on the module's hash functions, so snapshots are portable
-across processes running the *same* module version, not across
-versions that changed the hashing.)
-
-### `Bloom.decode`
-
-Rebuild a filter from a `Bloom.encode` snapshot.
-
-| | |
-|--|--|
-| **Call**    | `text Bloom.decode end` |
-| **Stack in**| the snapshot `String` |
-| **Returns** | a fresh `BloomFilter` |
-| **Errors**  | raises `bad_payload` when the text is not parseable jsonic or lacks the required fields |
-
-The payload's own `m` and `k` are trusted (not re-derived from `n` and
-`p`), so a snapshot survives changes to the sizing formulas. The
-rebuilt filter is independent of the original — mutating one does not
-affect the other.
-
-```aql
-def snap (bf Bloom.encode end)
-def back (snap Bloom.decode end)
-print ((back Bloom.contains "alice" end)) end   # => true
+print (([1 2 3] Sort.is-sorted Sort.by-number end)) end   # => true
+print ((["c" "a" "b"] Sort.is-sorted Sort.by-string end)) end   # => false
 ```
 
 ---
 
 ## Errors at a glance
 
-All failures raise coded errors; catch with `do […] error […]` and
-read `e get code` / `e get message` (dispatch on several codes with
-`case`).
+All failures raise coded errors; catch with `do […] error […]` and read
+`e get code` / `e get message` (dispatch on several codes with `case`).
 
 | Code | Raised by | Situation |
 |------|-----------|-----------|
-| `bad_input` | `make` | `n` not an Integer ≥ 1, or `p` not a Float in `(0, 0.5]` |
-| `incompatible_merge` | `merge` | the filters disagree on `m` or `k` |
-| `bad_payload` | `decode` | text is not parseable jsonic, or is missing/mis-typing `n p m k added set` |
+| `bad_input` | the distribution sorts | a non-Integer element; a negative element to `radix-lsd`/`radix-msd`/`bead`; or a value range over 1e8 for `counting`/`pigeonhole` |
+| `bogo_giveup` | `bogo` | shuffle cap exceeded without reaching sorted order |
 
-A missing `end` after a `Bloom.*` call is not a module error but a
-general AQL dispatch problem — the word collects the following token
-(add `end` or parens).
-
-## Complexity
-
-| Word       | Cost      |
-|------------|-----------|
-| `make`     | `O(m/63)` (allocates the word Array) |
-| `add`      | `O(k)`    |
-| `contains` | `O(k)`    |
-| `count`    | `O(m/63)` |
-| `params`   | `O(1)`    |
-| `merge`    | `O(m/63)` |
-| `encode`   | `O(m)`    |
-| `decode`   | `O(m/63 + s)` for `s` set bits |
+A missing `end` after a `Sort.*` call is not a module error but a general
+AQL dispatch problem — the word collects the following token (add `end` or
+parens).

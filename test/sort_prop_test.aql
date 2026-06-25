@@ -1,0 +1,193 @@
+# Property-based tests for sort — DIRECT-CODE FORM.
+#
+# Exercises aql:test's imperative `Test.check-prop` driver:
+#
+#   Test.check-prop NAME  [GEN-BODY]  [PROP-BODY]  RUNS  SEED  MAX-SHRINKS
+#
+# GEN-BODY runs with `r` bound to the random source and must leave one
+# value (the input list). PROP-BODY takes that list and returns Boolean.
+# The sibling `test/sort_prop_spec.aql` covers the same properties through
+# the declarative `Test.prop` surface.
+#
+# The keystone is cross-agreement: every algorithm must return the SAME
+# ordering as the stable `Sort.merge`. If a list is a permutation of the
+# input and equals the merge result, the algorithm is correct.
+#
+# Run:
+#   aql test/sort_prop_test.aql
+
+import "aql:test" end
+import "./sort.aql" end
+
+
+# --- key extractor used by the stability property -------------------
+#
+# Decodes the value half of a `value*1000 + index` tag.
+
+def val-key fn [
+  [x:Any] [Integer] [ x div 1000 ]
+]
+
+
+# --- P1+P4. Every comparison sort agrees with merge -----------------
+#
+# For a random list, each algorithm's output equals the stable merge
+# sort's output. Equal-to-merge implies both "is a permutation of the
+# input" and "is correctly ordered" — the two halves of correctness.
+
+Test.check-prop "all-comparison-sorts-agree-with-merge"
+  [ iota (r.int 0 7) each [ var [[i] r.int 0 12 ] ] ]
+  [
+    var [[lst]
+      def want (lst Sort.merge Sort.by-number end)
+      def results [
+        (lst Sort.bubble    Sort.by-number end)
+        (lst Sort.insertion Sort.by-number end)
+        (lst Sort.selection Sort.by-number end)
+        (lst Sort.gnome     Sort.by-number end)
+        (lst Sort.cocktail  Sort.by-number end)
+        (lst Sort.comb      Sort.by-number end)
+        (lst Sort.shell     Sort.by-number end)
+        (lst Sort.odd-even  Sort.by-number end)
+        (lst Sort.cycle     Sort.by-number end)
+        (lst Sort.pancake   Sort.by-number end)
+        (lst Sort.bitonic   Sort.by-number end)
+        (lst Sort.quick     Sort.by-number end)
+        (lst Sort.heap      Sort.by-number end)
+        (lst Sort.intro     Sort.by-number end)
+        (lst Sort.tim       Sort.by-number end)
+        (lst Sort.stooge    Sort.by-number end)
+        (lst Sort.slow      Sort.by-number end)
+      ]
+      def ok (make Array [true])
+      def _ (results each [
+        var [[r] if ((r deq want) not) [ ok set 0 false end 0 ] [0] ]
+      ])
+      ok get 0
+    ]
+  ]
+  25 1 0
+end
+
+
+# --- P4b. Distribution sorts agree with merge (non-negative ints) ---
+
+Test.check-prop "distribution-sorts-agree-with-merge"
+  [ iota (r.int 0 8) each [ var [[i] r.int 0 40 ] ] ]
+  [
+    var [[lst]
+      def want (lst Sort.merge Sort.by-number end)
+      def results [
+        (lst Sort.counting   end)
+        (lst Sort.pigeonhole end)
+        (lst Sort.radix-lsd  end)
+        (lst Sort.radix-msd  end)
+        (lst Sort.bucket     end)
+        (lst Sort.bead       end)
+      ]
+      def ok (make Array [true])
+      def _ (results each [
+        var [[r] if ((r deq want) not) [ ok set 0 false end 0 ] [0] ]
+      ])
+      ok get 0
+    ]
+  ]
+  25 1 0
+end
+
+
+# --- P2. Output is ordered ------------------------------------------
+
+Test.check-prop "quick-output-is-ordered"
+  [ iota (r.int 0 12) each [ var [[i] r.int 0 50 ] ] ]
+  [ var [[lst] (lst Sort.quick Sort.by-number end) Sort.is-sorted Sort.by-number end ] ]
+  30 7 0
+end
+
+
+# --- P3. Idempotent: sorting a sorted list is a no-op ---------------
+
+Test.check-prop "sort-is-idempotent"
+  [ iota (r.int 0 12) each [ var [[i] r.int 0 50 ] ] ]
+  [
+    var [[lst]
+      def once (lst  Sort.heap Sort.by-number end)
+      def twice (once Sort.heap Sort.by-number end)
+      (once deq twice)
+    ]
+  ]
+  30 3 0
+end
+
+
+# --- P5. Reverse duality --------------------------------------------
+#
+# Sorting with the reversed comparator yields the reverse of sorting
+# with the comparator (for distinct elements; with ties the multiset
+# still matches, which `deq` after reverse verifies on these inputs).
+
+Test.check-prop "reverse-comparator-reverses-output"
+  [ iota (r.int 0 10) each [ var [[i] r.int 0 100 ] ] ]
+  [
+    var [[lst]
+      def asc  (lst Sort.quick Sort.by-number end)
+      def desc (lst Sort.quick (Sort.by-number Sort.reverse) end)
+      (desc deq (asc reverse))
+    ]
+  ]
+  30 5 0
+end
+
+
+# --- P6. Stability: merge & insertion keep equal keys in order ------
+#
+# Tag each value with its original index, sort by value only, and check
+# that within equal values the indices stay ascending. Done by sorting
+# index-tagged pairs with a key comparator and confirming the tags are
+# non-decreasing within each value group via a direct scan.
+
+Test.check-prop "merge-is-stable-on-duplicate-keys"
+  [ iota (r.int 0 10) each [ var [[i] r.int 0 3 ] ] ]
+  [
+    var [[lst]
+      # pair each value with its position as value*1000 + index, sort by
+      # value (// 1000); stability ⇒ ties keep ascending index ⇒ the
+      # fully-encoded numbers come out globally ascending.
+      def n (lst size)
+      def arr (make Array lst)
+      def enc (make Array (iota n each [drop 0]))
+      def _ (iota n each [ var [[i] enc set i (((arr get i) mul 1000) add i) end 0 ] ])
+      def encl (convert List enc)
+      def by-val (encl Sort.merge (val-key/r Sort.by-key) end)
+      # stable ⇒ by-val equals sorting the encoded numbers outright
+      def direct (encl Sort.merge Sort.by-number end)
+      (by-val deq direct)
+    ]
+  ]
+  25 9 0
+end
+
+
+# --- P7. Comparator laws --------------------------------------------
+
+Test.check-prop "natural-orders-numeric-suffixes-by-value"
+  [ r.int 2 99 ]
+  [
+    var [[k]
+      def small `file${k}`
+      def big   `file${(k mul 10)}`
+      def pair  [big small]
+      def got   (pair Sort.merge Sort.natural end)
+      (got deq [small big])
+    ]
+  ]
+  20 2 0
+end
+
+
+# --- summary --------------------------------------------------------
+
+"---" print
+"fail count: " print Test.fail-count end print
+0 Test.fail-count end Assert.equal end
+"all green" print

@@ -1,0 +1,69 @@
+# Smoke test for the sort module. Imports the library and walks through
+# every public word — comparators, combinators, and every algorithm — so
+# a clean end-to-end run (no errors) is the pass condition.
+#
+# Prints are written one value per statement (`print (value) end`):
+# `print` collects a forward argument, so chained prints reverse order.
+#
+# Run:
+#   aql test/sort_smoke_test.aql
+
+import "./sort.aql" end
+
+print ("--- sort smoke demo ---") end
+
+def nums [5 3 8 1 9 2 7 4 6 0]
+def strs ["pear" "Apple" "fig" "banana"]
+def files ["file10" "file2" "file1" "file20"]
+
+# comparison sorts (comparator-driven)
+print (`bubble:    ${(nums Sort.bubble    Sort.by-number end)}`) end
+print (`insertion: ${(nums Sort.insertion Sort.by-number end)}`) end
+print (`selection: ${(nums Sort.selection Sort.by-number end)}`) end
+print (`gnome:     ${(nums Sort.gnome     Sort.by-number end)}`) end
+print (`cocktail:  ${(nums Sort.cocktail  Sort.by-number end)}`) end
+print (`comb:      ${(nums Sort.comb      Sort.by-number end)}`) end
+print (`shell:     ${(nums Sort.shell     Sort.by-number end)}`) end
+print (`odd-even:  ${(nums Sort.odd-even  Sort.by-number end)}`) end
+print (`cycle:     ${(nums Sort.cycle     Sort.by-number end)}`) end
+print (`pancake:   ${(nums Sort.pancake   Sort.by-number end)}`) end
+print (`bitonic:   ${(nums Sort.bitonic   Sort.by-number end)}`) end
+print (`quick:     ${(nums Sort.quick     Sort.by-number end)}`) end
+print (`merge:     ${(nums Sort.merge     Sort.by-number end)}`) end
+print (`heap:      ${(nums Sort.heap      Sort.by-number end)}`) end
+print (`intro:     ${(nums Sort.intro     Sort.by-number end)}`) end
+print (`tim:       ${(nums Sort.tim       Sort.by-number end)}`) end
+
+# joke / educational sorts
+print (`stooge:    ${(nums Sort.stooge    Sort.by-number end)}`) end
+print (`slow:      ${(nums Sort.slow      Sort.by-number end)}`) end
+print (`bogo:      ${([3 1 2] Sort.bogo   Sort.by-number end)}`) end
+
+# distribution sorts (Integers, ascending; no comparator)
+print (`counting:   ${(nums Sort.counting   end)}`) end
+print (`pigeonhole: ${(nums Sort.pigeonhole end)}`) end
+print (`radix-lsd:  ${(nums Sort.radix-lsd  end)}`) end
+print (`radix-msd:  ${(nums Sort.radix-msd  end)}`) end
+print (`bucket:     ${(nums Sort.bucket     end)}`) end
+print (`bead:       ${(nums Sort.bead       end)}`) end
+
+# default
+print (`sort:      ${(nums Sort.sort Sort.by-number end)}`) end
+
+# comparators over other types
+print (`by-string:        ${(strs  Sort.merge Sort.by-string        end)}`) end
+print (`case-insensitive: ${(strs  Sort.merge Sort.case-insensitive end)}`) end
+print (`natural:          ${(files Sort.merge Sort.natural          end)}`) end
+print (`by-boolean:       ${([true false true] Sort.merge Sort.by-boolean end)}`) end
+print (`by-generic:       ${(nums  Sort.merge Sort.by-generic       end)}`) end
+
+# combinators
+print (`reverse:   ${(nums Sort.quick (Sort.by-number Sort.reverse) end)}`) end
+def slen fn [[s:Any] [Integer] [ s size ]]
+print (`by-key:    ${(strs Sort.merge (slen/r Sort.by-key) end)}`) end
+
+# predicate + user comparator + builtin cmp
+print (`is-sorted: ${([1 2 3] Sort.is-sorted Sort.by-number end)}`) end
+print (`builtin cmp: ${(nums Sort.quick cmp/r end)}`) end
+
+print ("--- ok ---") end
