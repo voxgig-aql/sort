@@ -38,6 +38,6 @@ mistakes to avoid. Every example there is verified against the pinned
 - AQL-runtime gotchas discovered while building this library are captured
   inline as code comments in `sort.aql` and in AGENTS.md's "Common
   mistakes". The pinned aql commit is single-sourced in the CI workflow's
-  `AQL_REF` (`.github/workflows/test.yml`, currently aql `c5fbb04`); a CI
+  `AQL_REF` (`.github/workflows/test.yml`, currently aql `2342477`); a CI
   job fails if the hook or `api.json` drift from it.
 - Forking this repo to start a new AQL library? See `TEMPLATE.md`.
