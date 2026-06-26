@@ -16,7 +16,7 @@ env:
   # was written. Pinned to the exact commit it is verified against: the
   # build where all five suites interpret and compile (byte compiler) to
   # identical output.
-  AQL_REF: 234247709f7d971575da41a9b833f6b3e7fd8052
+  AQL_REF: 7b1a4fbdd4cc0b93966a660d642416e714c02b98
 
 jobs:
   test:

@@ -21,7 +21,7 @@ log() { echo "[session-start] $*" >&2; }
 # .github/workflows/test.yml. Full 40-char commit so the build is
 # reproducible. This is the latest aql `main` at the time the module was
 # written (2026-06-24).
-AQL_REF=234247709f7d971575da41a9b833f6b3e7fd8052
+AQL_REF=7b1a4fbdd4cc0b93966a660d642416e714c02b98
 BIN_DIR="$HOME/.local/bin"
 AQL="$BIN_DIR/aql"
 
