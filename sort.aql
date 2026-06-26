@@ -234,7 +234,7 @@ def bubble-sort fn [
     def n (lst size)
     def arr (make Array lst)
     def _ (iota n each [
-      var [[pass]
+      var [[_pass]
         def _i (iota (n sub 1) each [
           var [[i]
             def c ((arr get i) (arr get (i add 1)) comp)
@@ -497,7 +497,7 @@ def cocktail-sort fn [
     def n (lst size)
     def arr (make Array lst)
     def _ (iota n each [
-      var [[pass]
+      var [[_pass]
         def _f (iota (n sub 1) each [
           var [[i]
             def c ((arr get i) (arr get (i add 1)) comp)
@@ -526,7 +526,7 @@ def comb-sort fn [
     def arr (make Array lst)
     def gap (make Array [n])
     def _ (iota n each [
-      var [[pass]
+      var [[_pass]
         def g0 (gap get 0)
         def g ((g0 mul 10) div 13)
         def gg (if (g lt 1) [1] [g])
@@ -553,7 +553,7 @@ def shell-sort fn [
     def arr (make Array lst)
     def gap (make Array [(n div 2)])
     def _ (iota n each [
-      var [[gstep]
+      var [[_gstep]
         def g (gap get 0)
         if (g gt 0) [
           def _ins (iota n each [
@@ -588,7 +588,7 @@ def odd-even-sort fn [
     def n (lst size)
     def arr (make Array lst)
     def _ (iota n each [
-      var [[pass]
+      var [[_pass]
         def _o (iota n each [
           var [[i]
             if (((i mod 2) eq 1) and ((i add 1) lt n)) [
@@ -659,7 +659,7 @@ def cycle-sort fn [
                     ]
                   ])
                   def _d (iota n each [
-                    var [[u]
+                    var [[_u]
                       def p (posc get 0)
                       if (p lt n) [
                         def c ((item get 0) (arr get p) comp)
@@ -935,7 +935,7 @@ def radix-lsd-sort fn [
       def cur (make Array lst)
       def place (make Array [1])
       def _ (iota 19 each [
-        var [[d]
+        var [[_d]
           def pl (place get 0)
           if (pl lte mx) [
             def counts (make Array (iota 10 each [drop 0]))
@@ -1032,7 +1032,7 @@ def radix-msd-sort fn [
       def mx (lst list-max)
       def place (make Array [1])
       def _ (iota 19 each [
-        var [[d] if (((place get 0) mul 10) lte mx) [ place set 0 ((place get 0) mul 10) end 0 ] [0] ]
+        var [[_d] if (((place get 0) mul 10) lte mx) [ place set 0 ((place get 0) mul 10) end 0 ] [0] ]
       ])
       def arr (make Array lst)
       def _s (arr 0 (n sub 1) (place get 0) msd-go)
@@ -1097,7 +1097,7 @@ def bucket-sort fn [
                 def key (out get i)
                 def jc (make Array [i])
                 def _sh (iota cnt each [
-                  var [[u]
+                  var [[_u]
                     def j (jc get 0)
                     if (j gt s) [
                       def prev (out get (j sub 1))
@@ -1377,7 +1377,7 @@ def tim-sort fn [
             def j (make Array [(st add 1)])
             def stopped (make Array [false])
             def _run (iota n each [
-              var [[u]
+              var [[_u]
                 if (stopped get 0) [0] [
                   def jj (j get 0)
                   if (jj lt n) [
