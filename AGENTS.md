@@ -6,6 +6,10 @@ project. Every code block below is verified to run against `aql-lang/aql`
 [The one calling rule](#the-one-calling-rule) and
 [Common mistakes](#common-mistakes).
 
+> **Calling convention — forward args, receiver (list) last:**
+> `Sort.<algo> comparator list`. Piping `list Sort.<algo> comparator` also
+> works; only `Sort.<algo> list comparator` misbinds.
+
 ## What it is
 
 Every well-known sorting algorithm, over every AQL type, driven by
@@ -43,21 +47,37 @@ import "./sort.aql"
 ## The one calling rule
 
 AQL is not C/Python/JS. There is no `f(a, b)` and no `obj.method(a)`.
-A call is written:
+Every `Sort` word takes the list (the **receiver**) as its **last**
+parameter, so two orders bind correctly:
 
 ```
-data Sort.verb comparator end
+Sort.verb comparator list      # forward (canonical): args first, receiver LAST
+list Sort.verb comparator      # piping: the receiver flows in from the left
 ```
 
-— the **list/data comes first**, then the verb, then the comparator (for
-comparison sorts), terminated with `end` (or wrapped in parens). Without a
-terminator the verb swallows whatever token follows it.
+Both produce the same result. The **forward** form is *saturated* by the
+trailing list, so it needs no `end` (the closing paren terminates it). The
+**piping** form needs `end` (or parens) because the trailing comparator
+would otherwise swallow the next token.
 
 ```aql
-[3 1 2] Sort.quick Sort.by-number end             # => [1 2 3]
-["file2" "file10"] Sort.merge Sort.natural end    # => [file2 file10]
+Sort.quick Sort.by-number [3 1 2]                 # => [1 2 3]    forward (canonical)
+[3 1 2] Sort.quick Sort.by-number end             # => [1 2 3]    piping (needs end)
 [5 2 8 1] Sort.counting end                        # => [1 2 5 8]  (no comparator)
 ```
+
+The **one** order that MISBINDS is receiver-first-all-forward —
+`Sort.verb list comparator` — where the list is read as the comparator (and
+vice versa), raising a `signature_error`:
+
+```aql
+Sort.quick [3 1 2] Sort.by-number                 # ✗ WRONG — misbinds; do not write this
+```
+
+The API reference below is written in the piping shape
+`list Sort.<algo> comparator end` for readability; the forward equivalent
+`Sort.<algo> comparator list` is exactly as valid. Use either — just never
+`Sort.<algo> list comparator`.
 
 ### Passing a comparator
 
@@ -178,6 +198,7 @@ def result (do [["a" "b"] Sort.counting end] error [ get code ])     # => bad_in
 |---------------|---------|-----|
 | `Sort.quick([3 1 2], cmp)` | `[3 1 2] Sort.quick cmp/r end` | No `f(a,b)` syntax in AQL. |
 | `[3 1 2].sort(cmp)` | `[3 1 2] Sort.quick cmp/r end` | No method-call syntax. |
+| `Sort.quick nums Sort.by-number` (receiver between verb and comparator) | `Sort.quick Sort.by-number nums` (receiver LAST) | Receiver-first-all-forward misbinds: the list is read as the comparator (`signature_error`). |
 | `xs Sort.quick Sort.by-number` (no terminator) | `xs Sort.quick Sort.by-number end` | The verb swallows the next token without `end`/parens. |
 | `xs Sort.quick mycmp end` | `xs Sort.quick mycmp/r end` | A bare own-word comparator auto-invokes; `/r` passes it as a value. |
 | `xs Sort.quick Sort.by-number/r end` | `xs Sort.quick Sort.by-number end` | Namespace comparators are already values — no `/r`. |

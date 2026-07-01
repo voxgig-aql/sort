@@ -1,6 +1,6 @@
 ---
 name: sort-aql
-description: Use when writing or editing AQL code that calls the Sort sorting library — Sort.quick / Sort.merge / Sort.heap / Sort.tim / Sort.counting / Sort.radix-lsd and the other algorithms, the comparators Sort.by-number / Sort.by-string / Sort.natural / Sort.case-insensitive / Sort.reverse / Sort.by-key, or any file that does `import "./sort.aql"`. Provides the exact AQL calling convention (which is not C/Python/JS), the comparator-driven API, verified copy-paste idioms, and fixes for the mistakes agents most often make (foreign call syntax like `xs.sort(cmp)`, missing `end` terminators, forgetting `/r` on a comparator, assuming sorts mutate in place).
+description: Use when writing or editing AQL code that calls the Sort sorting library — Sort.quick / Sort.merge / Sort.heap / Sort.tim / Sort.counting / Sort.radix-lsd and the other algorithms, the comparators Sort.by-number / Sort.by-string / Sort.natural / Sort.case-insensitive / Sort.reverse / Sort.by-key, or any file that does `import "./sort.aql"`. Provides the exact AQL calling convention (which is not C/Python/JS), the comparator-driven API, verified copy-paste idioms, and fixes for the mistakes agents most often make (foreign call syntax like `xs.sort(cmp)`, misbinding the argument order — the list is the LAST argument — missing `end` terminators, forgetting `/r` on a comparator, assuming sorts mutate in place).
 ---
 
 # Calling the Sort library (AQL)
@@ -25,26 +25,47 @@ import "./sort.aql"
 
 ## The one calling rule
 
-AQL has no `f(a, b)` and no `obj.method(a)`. Write:
+AQL has no `f(a, b)` and no `obj.method(a)`. Every `Sort` word takes the
+list (the **receiver**) as its **last** parameter, so two orders bind
+correctly:
 
 ```
-list Sort.verb comparator end
+Sort.verb comparator list      # forward (canonical): args first, receiver LAST
+list Sort.verb comparator      # piping: the receiver flows in from the left
 ```
 
-List/data first, then the verb, then the comparator (for comparison
-sorts), **terminated with `end`** (or wrap the whole call in parens).
-Without a terminator the verb swallows the following token.
+Both produce the same result. Prefer the **forward** form — because the
+receiver is last, the call is *saturated* by it and needs no `end` (the
+closing paren terminates it). The **piping** form needs `end` (or parens)
+because the trailing comparator would otherwise swallow the next token.
 
 ```aql
-[3 1 2] Sort.quick Sort.by-number end             # => [1, 2, 3]
-[5 2 8 1] Sort.counting end                        # => [1, 2, 5, 8]  (no comparator)
+Sort.quick Sort.by-number [3 1 2]         # => [1, 2, 3]    ✓ forward (canonical)
+[3 1 2] Sort.quick Sort.by-number end     # => [1, 2, 3]    ✓ piping (needs end)
+Sort.counting [5 2 8 1]                    # => [1, 2, 5, 8] (no comparator)
 ```
+
+The **one** order that MISBINDS is receiver-first-all-forward —
+`Sort.verb list comparator` — where the list is read as the comparator and
+the comparator as the list, raising a `signature_error`:
+
+```aql
+Sort.quick [3 1 2] Sort.by-number         # ✗ WRONG — misbinds; do not write this
+```
+
+> The API reference below is written in the piping shape
+> `list Sort.<algo> comparator end` for readability, but the canonical
+> forward equivalent `Sort.<algo> comparator list` is exactly as valid.
+> Use either — just never `Sort.<algo> list comparator`.
 
 ### Passing a comparator
 
 - A namespace comparator → **bare**: `Sort.by-number`.
 - Your own comparator word → with **`/r`**: `mycmp/r`.
 - The built-in `cmp` → `cmp/r`.
+- Capturing a comparator into a local `def` is still a value hand-off —
+  `def numcmp (Sort.by-number/r)` — and pass it on later with `/r` too
+  (`Sort.quick numcmp/r nums`), since a bare word there would dispatch.
 
 A comparator is a two-argument function returning a negative / zero /
 positive `Integer` (first sorts before / equal to / after the second) —
@@ -77,39 +98,66 @@ Catch errors with `do […] error […]`; read `e get code` in the handler.
 
 ## Idioms (verified)
 
+Canonical **forward** form — `Sort.verb  args  receiver` (receiver last):
+
 ```aql
 import "./sort.aql"
+print ((Sort.quick Sort.by-number [5 3 8 1])) end                    # => [1, 3, 5, 8]
+print ((Sort.merge Sort.by-string ["pear" "Apple" "fig"])) end       # => ['Apple', 'fig', 'pear']
+print ((Sort.quick (Sort.by-number Sort.reverse) [5 3 8 1])) end     # => [8, 5, 3, 1]
+```
+
+The **piping** form (receiver first) is equally valid — it just needs an
+`end` before the paren closes:
+
+```aql
 print (([5 3 8 1] Sort.quick Sort.by-number end)) end                # => [1, 3, 5, 8]
-print ((["pear" "Apple" "fig"] Sort.merge Sort.by-string end)) end   # => ['Apple', 'fig', 'pear']
-print (([5 3 8 1] Sort.quick (Sort.by-number Sort.reverse) end)) end # => [8, 5, 3, 1]
 ```
 
 Natural / alphanumeric order (numbers compare by value, not digit):
 
 ```aql
-print ((["file10" "file2" "file1"] Sort.merge Sort.natural end)) end # => ['file1', 'file2', 'file10']
+print ((Sort.merge Sort.natural ["file10" "file2" "file1"])) end     # => ['file1', 'file2', 'file10']
 ```
 
-Custom comparator and sort-by-key:
+Custom comparator (2-arg) and sort-by-key (a 1-arg **key function**):
 
 ```aql
-def by-len fn [[b:Any a:Any] [Integer] [ (a size) (b size) cmp ]]
-print ((["bbb" "a" "cc"] Sort.merge by-len/r end)) end               # => ['a', 'cc', 'bbb']
-print ((["bbb" "a" "cc"] Sort.merge (by-len/r Sort.by-key) end)) end # => ['a', 'cc', 'bbb']
+def by-len fn [[b:Any a:Any] [Integer] [ (a size) (b size) cmp ]]    # 2-arg comparator
+print ((Sort.merge by-len/r ["bbb" "a" "cc"])) end                   # => ['a', 'cc', 'bbb']
+
+def len-of fn [[s:Any] [Integer] [ s size ]]                         # 1-arg key function
+print ((Sort.merge (len-of/r Sort.by-key) ["bbb" "a" "cc"])) end     # => ['a', 'cc', 'bbb']
 ```
 
 ## Common mistakes
 
 | ✗ Don't | ✓ Do | Why |
 |---------|------|-----|
-| `Sort.quick([3 1 2], cmp)` / `[3 1 2].sort(cmp)` | `[3 1 2] Sort.quick cmp/r end` | AQL has no call/method syntax. |
-| `xs Sort.quick Sort.by-number` (no terminator) | `… end` | The verb swallows the next token. |
+| `Sort.quick([3 1 2], cmp)` / `[3 1 2].sort(cmp)` | `Sort.quick cmp/r [3 1 2]` (or `[3 1 2] Sort.quick cmp/r end`) | AQL has no call/method syntax. |
+| `Sort.quick nums Sort.by-number` (receiver between verb and comparator) | `Sort.quick Sort.by-number nums` (receiver LAST) | Receiver-first-all-forward misbinds: the list is read as the comparator (`signature_error`). |
+| `xs Sort.quick Sort.by-number` (piping, no terminator) | add `end`, or use forward `Sort.quick Sort.by-number xs` | In piping the trailing comparator swallows the next token; forward form needs no `end`. |
 | `xs Sort.quick mycmp end` | `xs Sort.quick mycmp/r end` | A bare own-word comparator auto-invokes; `/r` passes it as a value. |
 | `xs Sort.quick Sort.by-number/r end` | `xs Sort.quick Sort.by-number end` | Namespace comparators are already values — no `/r`. |
 | sort `xs`, then read `xs` as sorted | `def s (xs Sort.quick … end)` | Sorts return a **new** List; the input is unchanged. |
 | `[3 -1 2] Sort.radix-lsd end` | `Sort.counting`, or non-negative input | radix/bead need non-negative Integers (`bad_input`). |
 | `["a" "b"] Sort.counting end` | `["a" "b"] Sort.merge Sort.by-string end` | distribution sorts are Integer-only. |
 | `"label" print (v) print` | `print (v) end`, one per statement | `print` collects forward; chains print out of order. |
+
+## Result semantics
+
+- **Sorts return a NEW List** — they never mutate the input. Bind the
+  result (`def s (Sort.quick Sort.by-number xs)`). Maps and Lists are
+  immutable; for in-place work use a mutable `Array` (`flex` / `make
+  Array`).
+- **`eq` is identity, `deq` is structural.** `[1 2 3] eq [1 2 3]` is
+  `false` (distinct objects); use `deq` when asserting a sorted List
+  equals an expected List by value.
+- **Integer overflow fails loud.** AQL Integers are fixed-width (signed
+  64-bit); arithmetic that overflows the range raises `integer_overflow`
+  rather than wrapping — this is intended. The default comparators use
+  `cmp`, which never subtracts, so ordering itself is overflow-safe; watch
+  overflow only in your own key/arithmetic (`add`, `mul`, …).
 
 If the full repo is available, `AGENTS.md`, `api.json` (machine-readable
 signatures), and `docs/reference.md` have the complete guide;

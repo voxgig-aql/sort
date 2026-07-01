@@ -13,6 +13,11 @@ print ((["file10" "file2" "file1"] Sort.merge Sort.natural end)) end # => ['file
 print (([170 45 75 2 802 24] Sort.radix-lsd end)) end                # => [2, 24, 45, 75, 170, 802]
 ```
 
+> **Calling convention — forward args, receiver (list) last:**
+> `Sort.<algo> comparator list`. Piping `list Sort.<algo> comparator` also
+> works; only `Sort.<algo> list comparator` misbinds. Pass your own
+> comparator with `/r`; namespace comparators (`Sort.by-number`) go bare.
+
 > **Forking this to build a new AQL library?** This repo is a GitHub
 > template — read **[TEMPLATE.md](TEMPLATE.md)** for the instantiation
 > checklist, then delete it.
