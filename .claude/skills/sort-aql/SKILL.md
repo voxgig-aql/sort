@@ -148,8 +148,7 @@ print ((Sort.merge (len-of/r Sort.by-key) ["bbb" "a" "cc"])) end     # => ['a', 
 
 - **Sorts return a NEW List** — they never mutate the input. Bind the
   result (`def s (Sort.quick Sort.by-number xs)`). Maps and Lists are
-  immutable; for in-place work use a mutable `Array` (`flex` / `make
-  Array`).
+  immutable; for in-place work use a mutable `FlexList` (`flex`).
 - **`eq` is identity, `deq` is structural.** `[1 2 3] eq [1 2 3]` is
   `false` (distinct objects); use `deq` when asserting a sorted List
   equals an expected List by value.

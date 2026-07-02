@@ -59,9 +59,9 @@ Test.check-prop "all-comparison-sorts-agree-with-merge"
         (lst Sort.stooge    Sort.by-number end)
         (lst Sort.slow      Sort.by-number end)
       ]
-      def ok (make Array [true])
+      def ok (flex [true])
       def _ (results each [
-        var [[r] if ((r deq want) not) [ ok set 0 false end 0 ] [0] ]
+        var [[r] if ((r deq want) not) [ ok set 0 false end drop 0 ] [0] ]
       ])
       ok get 0
     ]
@@ -85,9 +85,9 @@ Test.check-prop "distribution-sorts-agree-with-merge"
         (lst Sort.bucket     end)
         (lst Sort.bead       end)
       ]
-      def ok (make Array [true])
+      def ok (flex [true])
       def _ (results each [
-        var [[r] if ((r deq want) not) [ ok set 0 false end 0 ] [0] ]
+        var [[r] if ((r deq want) not) [ ok set 0 false end drop 0 ] [0] ]
       ])
       ok get 0
     ]
@@ -154,10 +154,10 @@ Test.check-prop "merge-is-stable-on-duplicate-keys"
       # value (// 1000); stability ⇒ ties keep ascending index ⇒ the
       # fully-encoded numbers come out globally ascending.
       def n (lst size)
-      def arr (make Array lst)
-      def enc (make Array (iota n each [drop 0]))
-      def _ (iota n each [ var [[i] enc set i (((arr get i) mul 1000) add i) end 0 ] ])
-      def encl (convert List enc)
+      def arr (flex (lst slice 0 (lst size)))
+      def enc (flex (iota n each [drop 0]))
+      def _ (iota n each [ var [[i] enc set i (((arr get i) mul 1000) add i) end drop 0 ] ])
+      def encl (enc slice 0 (enc size))
       def by-val (encl Sort.merge (val-key/r Sort.by-key) end)
       # stable ⇒ by-val equals sorting the encoded numbers outright
       def direct (encl Sort.merge Sort.by-number end)

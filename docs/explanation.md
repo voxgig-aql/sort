@@ -76,7 +76,7 @@ a classic bug in hand-rolled numeric comparators.
 
 ## Why sorts return new lists
 
-Every algorithm copies its input into a fresh working Array, sorts the
+Every algorithm copies its input into a fresh working FlexList, sorts the
 copy, and returns it as a new List. The input list is never touched. This
 is the opposite of a traditional in-place sort, and it is a deliberate
 choice:
@@ -165,21 +165,16 @@ algorithms across files. (For your own comparators the same fact is
 benign: define the comparator and any helper it uses in the script that
 runs the sort, and they resolve.)
 
-### Box-threading comparators through recursion
+### Threading comparators through recursion
 
 The divide-and-conquer sorts (`quick`, `merge`, `heap`, `intro`,
 `bitonic`, `tim`, and the recursive joke sorts) recurse, and each
-recursive call needs the comparator. AQL's handling of a function
-*parameter* parked with `/r` is one-shot, which does not survive being
-threaded down a recursion. The library sidesteps this by wrapping the
-comparator in a one-cell Array — a "box" — built once at the top
-(`make Array [comp/r]`) and passed down as a plain Array. Each recursive
-frame reads the comparator back out with `def cmpf (box get 0)` and
-invokes it as `xi xj cmpf`. Passing a plain Array sidesteps the one-shot
-parameter restriction and keeps the static checker happy, so the
-comparator stays callable all the way down. This is an implementation
-detail — callers never see the box — but it explains a recurring shape in
-the source.
+recursive call needs the comparator. It is threaded directly as a
+`comp:Function` parameter: each frame invokes it bare (`xi xj comp`) and
+forwards it to the recursive calls with `comp/r`. (An earlier aql build
+had a one-shot restriction on re-parking a function parameter with `/r`,
+which forced a one-cell FlexList "box" workaround; that bug is fixed
+upstream, so the box is gone.)
 
 ### Bounded loops instead of `while`
 

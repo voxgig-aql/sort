@@ -120,7 +120,7 @@ unless noted; `n` is the list length.
 | `sort`      | **yes** | O(n log n) | O(n) | recommended default (currently stable merge) |
 
 The space column is O(n) throughout because each algorithm copies the
-input into a fresh working Array (the input is never mutated) even when
+input into a fresh working FlexList (the input is never mutated) even when
 the underlying ordering is "in place" on that copy.
 
 ```aql
