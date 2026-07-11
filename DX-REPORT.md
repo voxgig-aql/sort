@@ -1,21 +1,121 @@
 # Developer-experience report — building the `Sort` library in AQL
 
 A field report from converting this repository into the `Sort`
-sorting-algorithms library: 25 algorithms and a set of comparators, built
-and verified against **`aql-lang/aql @ 12a44e0`** (the pinned commit; see
-`api.json`). Every snippet below was run against that build; the observed
-output is shown inline.
+sorting-algorithms library: 25 algorithms and a set of comparators. The
+report has two parts:
+
+- **§§1–10** — the issues found building the library against
+  **`aql-lang/aql @ 12a44e0`** (2026-06-24). Every snippet was run against
+  that build; observed output is inline.
+- **[§0 — Update: porting to `0721e828`](#0-update--porting-to-aql-0721e828-2026-07-11)**
+  (below) — what changed when the library was later re-pinned to the latest
+  `main` (2026-07-11): which issues aql *fixed*, and the *new* breaking
+  changes the port had to absorb. **This is the current state; §§1–10 are the
+  historical record.** The library now runs, checks, and byte-compiles clean
+  on `0721e828`.
 
 The goal of this document is to save the next person time, and to give the
 `aql` maintainers a prioritized list of sharp edges. It is deliberately
 balanced — [§9](#9-what-worked-well) covers what made the build *pleasant*,
 which was a lot.
 
+## 0. Update — porting to aql `0721e828` (2026-07-11)
+
+The library was later moved from `12a44e0` (2026-06-24) to the latest aql
+`main`, **`0721e8280e01a37174c41b99ab49799f3098c135`** (2026-07-11). Two and
+a half weeks of `main` turned out to be a **breaking release**, not a bump.
+All five suites and the divergence harness pass on the new build (and it is
+now fully `aql check`-clean — 0 errors — where `12a44e0` had a lingering
+false positive). Highlights of the delta:
+
+### Issues from §§1–10 that `0721e828` FIXED
+
+| Was | Now on `0721e828` |
+|-----|-------------------|
+| **§1.1** parking a Function *param* with `/r` was one-shot | ✅ **Fixed** — `comp/r` forwards repeatedly. The Array-**box** workaround (§1.2) was *removed*: the sorts now thread the plain `comp:Function` param, invoke it bare (`a b comp`), and forward `comp/r`. |
+| **§1.2 / §6** `def cf (comp/r)` + the box tripped `aql check` (89 false errors) | ✅ **Gone** — with the box removed, `aql check sort.aql` reports **0 errors**. |
+| **§2.1** List `get` with a bare `each` var returned `None` | ✅ **Fixed** — a `flex` list indexes correctly with the loop var. |
+| **§2.2** `slice` on a value list stringified the elements | ✅ **Fixed** — `([3 1 2] slice 0 2) get 0` is now `Integer`. |
+
+Still present: **§3.4** (`and`/`or` don't short-circuit), **§4** (reserved
+words — now reported as `locked_signature`, and `Array` is itself gone as a
+word), **§1.6** (`def f word/r` bare still needs parens), **§5** (63-bit
+overflow is a hard error).
+
+### NEW breaking changes the port had to absorb
+
+1. 🟠 **`Array` is gone.** The `Array` type and the `make Array` constructor
+   were removed. The mutable, indexable sequence is now a **`FlexList`**,
+   built with `flex X` (and `flex (iota n each [drop 0])` for a zero-fill).
+   A `FlexList` satisfies the `List` type, so params/returns are typed
+   `:List`. `convert List <flex>` is gone too — use **`list <flex>`** to
+   freeze to an immutable `List`. (~140 sites in `sort.aql`.)
+   ```aql
+   def a (flex [1 2 3])   a set 1 99 end drop   print ((list a)) end   # => [1, 99, 3]
+   ```
+2. 🟠 **`set` is no longer void — it returns the container**, and function
+   bodies now enforce **strict return arity**. A bare `arr set i x end` in a
+   fn body or a plain `if`-branch leaks a value ("expected 1 return value(s),
+   got N"). Fixes: append **`drop`** (`arr set i x end drop`), or bind it.
+   Nuance discovered: a `var [[…] …]` block yields only its *last* value
+   (bare mutations inside are fine), but a **plain `[…]` block concatenates**
+   every leaked value — so the same mutation is safe in one and fatal in the
+   other.
+3. 🟠 **`aql check` errors are now FATAL to the interpreter.** `aql file`
+   aborts (no output, exit 1) if the whole-file check finds an error — and
+   checking is **context-sensitive**: `aql check sort.aql` alone was clean,
+   yet *calling* a distribution sort surfaced a return-arity error the
+   whole-file check had missed. The practical effect: "check advisory" is no
+   longer a real option — the library must be check-clean to run at all. (It
+   is.)
+4. 🟠 **`get` needs a quoted/string key.** `e get code` → `undefined word:
+   code`; use **`e get "code"`**. (Bit the error-code assertions in the
+   tests.)
+5. 🟡 **The "function word is a barrier" strict rule** landed: a `word/r`
+   reference in *forward-collection* position (after a bare verb) is not
+   collected. Namespace-dispatched calls (`list Sort.quick mycmp/r end`) are
+   unaffected, so the public API idiom is unchanged; only a couple of
+   internal bare-word call shapes needed regrouping.
+6. 🟡 **Stricter bytecode stack discipline** — a few functions now *refuse*
+   to byte-compile ("result operand of `get` is not on top") and fall back to
+   the interpreter. Output stays identical, so the divergence guard still
+   passes; it is a coverage note, not a correctness one.
+
+### Build / environment update (supersedes §7)
+
+GitHub egress got *stricter* mid-session: this time `git clone`,
+`codeload.github.com`, **and** the GitHub API all returned **403** ("GitHub
+access to this repository is not enabled for this session"). Only
+**`proxy.golang.org`** was reachable. aql is still buildable from there: its
+binary lives in a nested `cmd/go` module that `replace`s `../../eng/go` and
+`../../lang/go`, so downloading those **three** module zips from the Go proxy
+(at pseudo-version `v0.0.0-20260711120450-0721e8280e01`), reassembling the
+tree, and `go build`-ing yields the interpreter. The SessionStart hook and
+`test/divergence/run.sh` now **try the codeload tarball first and fall back
+to this Go-proxy reconstruction**, so a fresh session builds even under the
+tighter policy.
+
+### Bottom line
+
+The port was mechanical-but-pervasive (`flex`/`list`, a `drop` after every
+`set`, dropping the box for direct `comp` params, `get "code"`), driven by
+the new build's precise `line:col` errors. Net for a comparator-driven
+library, `0721e828` is **better**: the first-class-function friction
+(§1.1/§1.2/§6) is gone and the whole library is check-clean; the cost is the
+`Array`→`flex` rename and the stricter, more explicit value discipline around
+`set`.
+
+---
+
 ## Severity legend
 
 - 🔴 **Silent wrong result** — code runs, returns the wrong value, no error.
 - 🟠 **Hard error / forced a workaround** — fails loudly; shaped the design.
 - 🟡 **Sharp edge** — surprising, but easy to live with once known.
+
+> The §§1–10 below are the **original findings on `12a44e0`**. See
+> [§0](#0-update--porting-to-aql-0721e828-2026-07-11) for what changed on
+> `0721e828`.
 
 The single biggest theme: **first-class functions are load-bearing for a
 comparator-driven library, and they are the least-polished corner of the

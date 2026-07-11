@@ -14,7 +14,7 @@ workflow changes are staged here and a maintainer promotes them.
 
 ### What changed vs the live `.github/workflows/test.yml`
 
-1. **`AQL_REF` bumped to `12a44e0…`** — the latest aql `main` commit, the
+1. **`AQL_REF` bumped to `0721e82…`** — the latest aql `main` commit, the
    one this library is verified against (every suite interprets and byte
    compiles to identical output).
 2. **Suites renamed** to `test/sort_*` and the static check points at
@@ -35,7 +35,7 @@ PAT that has `workflow`, or the GitHub web UI):
 
 ```bash
 git mv ci/test.yml .github/workflows/test.yml
-git commit -m "ci: adopt aql 12a44e0; run sort suites"
+git commit -m "ci: adopt aql 0721e82; run sort suites"
 git push
 ```
 

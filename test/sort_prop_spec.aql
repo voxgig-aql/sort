@@ -58,7 +58,7 @@ def specs [
           (lst Sort.intro     Sort.by-number end)
           (lst Sort.tim       Sort.by-number end)
         ]
-        def ok (make Array [true])
+        def ok (flex [true])
         def _ (results each [ var [[r] if ((r deq want) not) [ ok set 0 false end 0 ] [0] ] ])
         ok get 0
     ] ])
@@ -76,7 +76,7 @@ def specs [
           (lst Sort.bucket     end)
           (lst Sort.bead       end)
         ]
-        def ok (make Array [true])
+        def ok (flex [true])
         def _ (results each [ var [[r] if ((r deq want) not) [ ok set 0 false end 0 ] [0] ] ])
         ok get 0
     ] ])

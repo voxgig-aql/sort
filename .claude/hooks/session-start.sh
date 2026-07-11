@@ -20,8 +20,8 @@ log() { echo "[session-start] $*" >&2; }
 # fails if they drift). The canonical workflow currently lives in ci/test.yml
 # pending promotion to .github/workflows/ (see ci/README.md). Full 40-char
 # commit so the build is reproducible. This is the latest aql `main` at the
-# time the module was written (2026-06-24).
-AQL_REF=12a44e0c6ca3f49cd35a871b573fd96bc13d7fd6
+# time the module was written; re-pinned 2026-07-11.
+AQL_REF=0721e8280e01a37174c41b99ab49799f3098c135
 BIN_DIR="$HOME/.local/bin"
 AQL="$BIN_DIR/aql"
 
@@ -40,20 +40,48 @@ else
   fi
   log "Building aql @ $AQL_REF from source (one-time; cached afterwards)…"
   mkdir -p "$BIN_DIR"
+
+  # The Go-module-proxy pseudo-version for the SAME commit (12-hex suffix is
+  # the short SHA of AQL_REF) — used by the proxy fallback below. Bump with
+  # AQL_REF.
+  AQL_GOPROXY_VERSION=v0.0.0-20260711120450-0721e8280e01
+
+  # Reconstruct + build from the Go module proxy (3 nested modules). Reachable
+  # where GitHub egress (git clone / codeload) is blocked but proxy.golang.org
+  # is allowed. Args: <out-binary> <workdir>.
+  build_from_goproxy() {
+    local out="$1" work="$2" sub
+    mkdir -p "$work/tree"
+    for sub in eng/go lang/go cmd/go; do
+      curl -fsSL -o "$work/m.zip" \
+        "https://proxy.golang.org/github.com/aql-lang/aql/$sub/@v/$AQL_GOPROXY_VERSION.zip" || return 1
+      ( cd "$work" && unzip -q -o m.zip ) || return 1
+      mkdir -p "$work/tree/$sub"
+      cp -a "$work/github.com/aql-lang/aql/$sub@$AQL_GOPROXY_VERSION/." "$work/tree/$sub/" || return 1
+      rm -rf "$work/github.com" "$work/m.zip"
+    done
+    ( cd "$work/tree/cmd/go" && GOFLAGS=-mod=mod go build \
+        -ldflags "-X github.com/aql-lang/aql/cmd/go.Version=$AQL_REF" \
+        -o "$out" ./aql )
+  }
+
   src="$(mktemp -d)"
-  # Fetch as a source tarball from codeload.github.com — works even where a
-  # raw `git clone` of aql-lang/aql is blocked by an egress proxy (the same
-  # method test/divergence/run.sh uses).
+  # Try the codeload tarball first; on failure fall back to the Go module proxy.
   if curl -fsSL "https://codeload.github.com/aql-lang/aql/tar.gz/$AQL_REF" \
-       | tar -xz -C "$src" --strip-components=1; then
-    ( cd "$src/cmd/go" \
-      && GOFLAGS=-mod=mod go build \
-           -ldflags "-X github.com/aql-lang/aql/cmd/go.Version=${AQL_REF}" \
-           -o "$AQL" ./aql ) \
-      && log "Built $("$AQL" -version 2>/dev/null)." \
-      || log "WARNING: aql build failed; see docs/how-to.md to build manually."
+       | tar -xz -C "$src" --strip-components=1 \
+     && ( cd "$src/cmd/go" \
+          && GOFLAGS=-mod=mod go build \
+               -ldflags "-X github.com/aql-lang/aql/cmd/go.Version=${AQL_REF}" \
+               -o "$AQL" ./aql ); then
+    log "Built $("$AQL" -version 2>/dev/null)."
   else
-    log "WARNING: could not fetch aql source (network?); see docs/how-to.md."
+    log "codeload path failed; trying the Go module proxy…"
+    rm -rf "$src"; src="$(mktemp -d)"
+    if build_from_goproxy "$AQL" "$src"; then
+      log "Built $("$AQL" -version 2>/dev/null) (via Go module proxy)."
+    else
+      log "WARNING: aql build failed (codeload and Go proxy); see docs/how-to.md."
+    fi
   fi
   rm -rf "$src"
 fi
