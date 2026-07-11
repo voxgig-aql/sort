@@ -299,3 +299,24 @@ test/divergence/run.sh
 It builds a newer aql (the `--compile` CLI postdates this module's pin)
 and prints a per-suite interpreter/check/bytecode matrix. See
 [`test/divergence/README.md`](../test/divergence/README.md) for details.
+
+## Measure performance
+
+`bench/` holds a performance baseline: `bench/sort_bench.aql` times each
+representative algorithm sorting a fixed, deterministic array (execution-
+only, via `aql:time-util`), and `bench/run.sh` drives each `(algorithm,
+surface)` as its own process — under the interpreter (`AQL_NO_COMPILE=1`)
+and the bytecode VM (the default) — reporting the best-of-N milliseconds
+per algorithm and the interpreter/compiled speedup:
+
+```bash
+AQL=/path/to/aql bench/run.sh          # default 3 reps, best-of
+```
+
+The sizes are deliberately small: AQL threads a first-class comparator
+through every element move, so the per-comparison function dispatch — not
+the algorithm — dominates the wall-clock. The numbers are for ranking
+algorithms and tracking the interpreter/bytecode gap across aql versions,
+not for comparing against native sorts. `BENCH_TIMEOUT=<secs>` bounds any
+single run so a slow configuration is skipped rather than left to hang.
+A recorded snapshot lives in [`bench/BASELINE.md`](../bench/BASELINE.md).

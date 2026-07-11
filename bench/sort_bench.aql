@@ -1,0 +1,67 @@
+# Performance baseline workload for the Sort library.
+#
+# Times each representative algorithm sorting a fixed, deterministic
+# pseudo-random Integer array and prints one `<algo> <ms>` line per run
+# (execution-only wall-clock via aql:time-util, so process start + parse
+# are excluded). Run it through both aql surfaces to get the baseline —
+# see bench/run.sh, which drives it under the interpreter (AQL_NO_COMPILE=1)
+# and the bytecode VM (default) and tabulates the two columns.
+#
+#   aql bench/sort_bench.aql            # one surface, ad-hoc
+#   bench/run.sh                        # both surfaces, tabulated
+#
+# Sizes are split so the O(n^2) family stays bounded under the (slow)
+# interpreter while the O(n log n) / distribution family gets a big
+# enough n for the number to mean something. The joke sorts (bogo /
+# stooge / slow) are deliberately excluded — they are not throughput-
+# meaningful.
+
+import "./sort.aql" end
+import "aql:time-util" end
+
+# Deterministic pseudo-random fill: Knuth-multiplicative hash of the index,
+# folded into [0, span). No RNG needed, so every run sorts the same data.
+def mkarr fn [
+  [span:Integer n:Integer] [List] [
+    iota n each [ var [[i] ((i mul 2654435761) mod span) ] ]
+  ]
+]
+
+def SMALL 200           # O(n^2) / sub-quadratic family
+def LARGE 800           # O(n log n) / distribution family
+# Sizes are small on purpose: AQL threads a first-class comparator through
+# every element move, and that per-comparison fn dispatch — not the
+# algorithm — dominates the wall-clock, so even n=800 under the interpreter
+# is seconds of work. They are big enough to rank the algorithms and to
+# expose the interpreter/bytecode gap, which is the point of a baseline.
+
+def s (1000000 SMALL mkarr)   # near-distinct values for the comparison sorts
+def b (1000000 LARGE mkarr)   # near-distinct values for the comparison sorts
+def bd (4000 LARGE mkarr)     # bounded range for the distribution sorts:
+                              # counting / bucket are O(n + range), so a
+                              # million-wide range would measure the range
+                              # (and blow the runtime step budget), not the sort
+
+print (`# n_small=${SMALL} n_large=${LARGE}`) end
+
+# --- O(n^2) / sub-quadratic (small n) ---
+def t0 (TimeUtil.now) def _r0 (s Sort.insertion Sort.by-number end) print (`insertion ${(TimeUtil.total-ms (TimeUtil.elapsed t0))}`) end
+def t1 (TimeUtil.now) def _r1 (s Sort.selection Sort.by-number end) print (`selection ${(TimeUtil.total-ms (TimeUtil.elapsed t1))}`) end
+def t2 (TimeUtil.now) def _r2 (s Sort.bubble    Sort.by-number end) print (`bubble ${(TimeUtil.total-ms (TimeUtil.elapsed t2))}`) end
+def t3 (TimeUtil.now) def _r3 (s Sort.shell     Sort.by-number end) print (`shell ${(TimeUtil.total-ms (TimeUtil.elapsed t3))}`) end
+def t4 (TimeUtil.now) def _r4 (s Sort.comb      Sort.by-number end) print (`comb ${(TimeUtil.total-ms (TimeUtil.elapsed t4))}`) end
+
+# --- O(n log n) comparison (large n) ---
+def t5 (TimeUtil.now) def _r5 (b Sort.quick Sort.by-number end) print (`quick ${(TimeUtil.total-ms (TimeUtil.elapsed t5))}`) end
+def t6 (TimeUtil.now) def _r6 (b Sort.merge Sort.by-number end) print (`merge ${(TimeUtil.total-ms (TimeUtil.elapsed t6))}`) end
+def t7 (TimeUtil.now) def _r7 (b Sort.heap  Sort.by-number end) print (`heap ${(TimeUtil.total-ms (TimeUtil.elapsed t7))}`) end
+def t8 (TimeUtil.now) def _r8 (b Sort.intro Sort.by-number end) print (`intro ${(TimeUtil.total-ms (TimeUtil.elapsed t8))}`) end
+def t9 (TimeUtil.now) def _r9 (b Sort.tim   Sort.by-number end) print (`tim ${(TimeUtil.total-ms (TimeUtil.elapsed t9))}`) end
+def ta (TimeUtil.now) def _ra (b Sort.sort  Sort.by-number end) print (`default ${(TimeUtil.total-ms (TimeUtil.elapsed ta))}`) end
+
+# --- distribution (large n, no comparator, bounded range) ---
+def tb (TimeUtil.now) def _rb (bd Sort.counting  end) print (`counting ${(TimeUtil.total-ms (TimeUtil.elapsed tb))}`) end
+def tc (TimeUtil.now) def _rc (bd Sort.radix-lsd end) print (`radix-lsd ${(TimeUtil.total-ms (TimeUtil.elapsed tc))}`) end
+def td (TimeUtil.now) def _rd (bd Sort.bucket    end) print (`bucket ${(TimeUtil.total-ms (TimeUtil.elapsed td))}`) end
+
+print ("done") end
