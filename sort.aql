@@ -559,7 +559,14 @@ def shell-sort fn [
           def _ins (iota n each [
             var [[i]
               if (i gte g) [
-                def jc (flex [i])
+                # jc is a one-cell mutable index cursor. Built empty then
+                # set (not `flex [i]`): a `flex` list body that reads a
+                # loop-frame-local re-materialises via dynamic scope, which
+                # the byte compiler cannot bind through the enclosing each
+                # closure (it faults `dynamic-scope read miss` and falls back
+                # to the interpreter). `flex [0]` is inert, so it lowers.
+                def jc (flex [0])
+                def _jci (jc set 0 i end drop 0)
                 def _sh (iota n each [
                   var [[s]
                     def j (jc get 0)
@@ -1095,7 +1102,14 @@ def bucket-sort fn [
               var [[t]
                 def i (s add t)
                 def key (out get i)
-                def jc (flex [i])
+                # jc is a one-cell mutable index cursor. Built empty then
+                # set (not `flex [i]`): a `flex` list body that reads a
+                # loop-frame-local re-materialises via dynamic scope, which
+                # the byte compiler cannot bind through the enclosing each
+                # closure (it faults `dynamic-scope read miss` and falls back
+                # to the interpreter). `flex [0]` is inert, so it lowers.
+                def jc (flex [0])
+                def _jci (jc set 0 i end drop 0)
                 def _sh (iota cnt each [
                   var [[_u]
                     def j (jc get 0)
