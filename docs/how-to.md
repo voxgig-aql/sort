@@ -28,7 +28,7 @@ blocked, so fetch the pinned commit as a codeload tarball:
 
 ```bash
 mkdir -p /tmp/aql-source
-curl -fsSL https://codeload.github.com/aql-lang/aql/tar.gz/7b1a4fbdd4cc0b93966a660d642416e714c02b98 \
+curl -fsSL https://codeload.github.com/aql-lang/aql/tar.gz/618562025d9e0154107306927911a8b1b046333c \
   | tar -xz -C /tmp/aql-source --strip-components=1
 cd /tmp/aql-source/cmd/go
 GOFLAGS=-mod=mod go build -o "$HOME/.local/bin/aql" ./aql
@@ -38,7 +38,7 @@ Make sure `$HOME/.local/bin` is on your `PATH`, then check it:
 
 ```bash
 aql -version
-# => aql 7b1a4fbdd4cc0b93966a660d642416e714c02b98
+# => aql 618562025d9e0154107306927911a8b1b046333c
 ```
 
 Run any script in this repo by passing its path:
@@ -47,7 +47,7 @@ Run any script in this repo by passing its path:
 aql test/sort_smoke_test.aql
 ```
 
-This module is verified against aql commit `7b1a4fb`; the CI workflow
+This module is verified against aql commit `6185620`; the CI workflow
 pins the same commit.
 
 ---
