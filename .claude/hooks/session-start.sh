@@ -21,7 +21,7 @@ log() { echo "[session-start] $*" >&2; }
 # .github/workflows/test.yml. Full 40-char commit so the build is
 # reproducible. This is the latest aql `main` at the time the module was
 # written (2026-06-24).
-AQL_REF=7b1a4fbdd4cc0b93966a660d642416e714c02b98
+AQL_REF=618562025d9e0154107306927911a8b1b046333c
 BIN_DIR="$HOME/.local/bin"
 AQL="$BIN_DIR/aql"
 
@@ -47,7 +47,7 @@ else
   if curl -fsSL "https://codeload.github.com/aql-lang/aql/tar.gz/$AQL_REF" \
        | tar -xz -C "$src" --strip-components=1; then
     ( cd "$src/cmd/go" \
-      && GOFLAGS=-mod=mod go build \
+      && GOWORK=off GOFLAGS=-mod=mod go build \
            -ldflags "-X github.com/aql-lang/aql/cmd/go.Version=${AQL_REF}" \
            -o "$AQL" ./aql ) \
       && log "Built $("$AQL" -version 2>/dev/null)." \

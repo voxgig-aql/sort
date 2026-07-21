@@ -19,7 +19,7 @@ This snapshot was taken with the branch build of aql (latest `main`, the
 check-mode return-count fix, and the definition-site analysis-quota fix
 that lets the whole library `--force-compile` without refusal); the bench
 runs with `AQL_NO_CHECK=1`, so its runtime timings are representative of
-the module's pinned `7b1a4fb` build too. The `bucket` / `shell` rows in
+the module's pinned `6185620` build too. The `bucket` / `shell` rows in
 particular reflect the `flex[0]`+`set` index-cursor refactor, which is a
 library change independent of the aql version.
 
