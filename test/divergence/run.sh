@@ -32,7 +32,9 @@ set -uo pipefail
 
 # aql-lang/aql @ main, 2026-06-24 — the latest commit the library pins. Bump in
 # lockstep with the workflow AQL_REF.
-AQL_BYTECODE_REF=618562025d9e0154107306927911a8b1b046333c
+# Track aql-lang/aql MAIN: resolve its current HEAD at run time (no pinned
+# commit). Cached by the resolved SHA, so it rebuilds only when main advances.
+AQL_BYTECODE_REF="${AQL_BYTECODE_REF:-$(git ls-remote https://github.com/aql-lang/aql.git main | cut -f1)}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"

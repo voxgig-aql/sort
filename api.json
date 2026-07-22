@@ -1,39 +1,106 @@
 {
   "name": "sort",
   "version": "0.1.0",
-  "aql_ref": "6185620",
+  "aql_ref": "main",
   "description": "Sorting algorithms for AQL: every well-known sort (comparison, distribution, and joke/educational), driven by composable comparators, exposed as the single `Sort` namespace. Sorts return a NEW sorted List and never mutate their input.",
   "conventions": {
-    "import": "import \"./sort.aql\"  — no `end` needed on the pinned build; the library imports its own aql:* deps, callers need not",
+    "import": "import \"./sort.aql\"  \u2014 no `end` needed on the pinned build; the library imports its own aql:* deps, callers need not",
     "call": "receiver-first, verb in the middle, terminated with `end` (or wrapped in parens): `list Sort.verb comparator end`. The comparator is the trailing argument. Without a terminator the verb swallows the following token.",
-    "comparator": "A comparator is a two-argument function value returning a negative / zero / positive Integer when the first item sorts before / equal to / after the second (the sign is all that matters — same contract as the built-in `cmp`).",
+    "comparator": "A comparator is a two-argument function value returning a negative / zero / positive Integer when the first item sorts before / equal to / after the second (the sign is all that matters \u2014 same contract as the built-in `cmp`).",
     "passing_comparators": "Pass a comparator FROM this namespace bare (`list Sort.quick Sort.by-number end`). Pass your OWN comparator word or the built-in `cmp` with a `/r` suffix (`list Sort.quick mycmp/r end`, `list Sort.quick cmp/r end`).",
     "no_mutation": "Every algorithm returns a NEW sorted List; the input List is never modified. This is the OPPOSITE of an in-place library.",
     "distribution_sorts": "The distribution sorts (counting, pigeonhole, radix-lsd, radix-msd, bucket, bead) take NO comparator and order Integers ascending; radix and bead require non-negative Integers.",
     "import_resolution": "relative to the working directory the script is run from, not the importing file",
-    "external_deps": ["aql:string-util", "aql:math-util"],
+    "external_deps": [
+      "aql:string-util",
+      "aql:math-util"
+    ],
     "errors": "failures raise coded errors caught with `do [...] error [...]`; read e.code / e.message. Codes: bad_input (a distribution sort got a non-Integer, or radix/bead got a negative, or the value range is too large), bogo_giveup (Sort.bogo exceeded its shuffle cap)."
   },
   "modules": {
-    "sort.aql": { "kind": "sorting algorithms", "namespaces": ["Sort"] }
+    "sort.aql": {
+      "kind": "sorting algorithms",
+      "namespaces": [
+        "Sort"
+      ]
+    }
   },
   "types": {
-    "Comparator": { "kind": "function", "note": "A two-argument function value `[b a] -> Integer` returning negative/zero/positive. The library's comparators and combinators are all of this shape." }
+    "Comparator": {
+      "kind": "function",
+      "note": "A two-argument function value `[b a] -> Integer` returning negative/zero/positive. The library's comparators and combinators are all of this shape."
+    }
   },
   "word_specs": {
     "comparators": {
-      "by-number":        { "call": "a b Sort.by-number end",   "returns": "Integer", "note": "Ascending numeric order (Integer or Float)." },
-      "by-string":        { "call": "a b Sort.by-string end",   "returns": "Integer", "note": "Lexicographic (code-point) order." },
-      "by-boolean":       { "call": "a b Sort.by-boolean end",  "returns": "Integer", "note": "false before true." },
-      "by-generic":       { "call": "a b Sort.by-generic end",  "returns": "Integer", "note": "Polymorphic order via the native `cmp`." },
-      "natural":          { "call": "a b Sort.natural end",     "returns": "Integer", "note": "Alphanumeric order: embedded digit runs compare by numeric value, so \"file2\" < \"file10\"." },
-      "case-insensitive": { "call": "a b Sort.case-insensitive end", "returns": "Integer", "note": "Case-folded lexicographic string order." },
-      "reverse":          { "call": "comp Sort.reverse end",    "args": ["comp:Comparator"], "returns": "Comparator", "note": "Returns a new comparator that reverses `comp` (descending)." },
-      "by-key":           { "call": "keyfn Sort.by-key end",    "args": ["keyfn:Function"],  "returns": "Comparator", "note": "Returns a comparator that orders items by the key `keyfn` extracts, compared with the native `cmp`." }
+      "by-number": {
+        "call": "a b Sort.by-number end",
+        "returns": "Integer",
+        "note": "Ascending numeric order (Integer or Float)."
+      },
+      "by-string": {
+        "call": "a b Sort.by-string end",
+        "returns": "Integer",
+        "note": "Lexicographic (code-point) order."
+      },
+      "by-boolean": {
+        "call": "a b Sort.by-boolean end",
+        "returns": "Integer",
+        "note": "false before true."
+      },
+      "by-generic": {
+        "call": "a b Sort.by-generic end",
+        "returns": "Integer",
+        "note": "Polymorphic order via the native `cmp`."
+      },
+      "natural": {
+        "call": "a b Sort.natural end",
+        "returns": "Integer",
+        "note": "Alphanumeric order: embedded digit runs compare by numeric value, so \"file2\" < \"file10\"."
+      },
+      "case-insensitive": {
+        "call": "a b Sort.case-insensitive end",
+        "returns": "Integer",
+        "note": "Case-folded lexicographic string order."
+      },
+      "reverse": {
+        "call": "comp Sort.reverse end",
+        "args": [
+          "comp:Comparator"
+        ],
+        "returns": "Comparator",
+        "note": "Returns a new comparator that reverses `comp` (descending)."
+      },
+      "by-key": {
+        "call": "keyfn Sort.by-key end",
+        "args": [
+          "keyfn:Function"
+        ],
+        "returns": "Comparator",
+        "note": "Returns a comparator that orders items by the key `keyfn` extracts, compared with the native `cmp`."
+      }
     },
     "comparison_sorts": {
       "_call": "list Sort.<algo> comparator end  ->  List (new, sorted; input unchanged)",
-      "algorithms": ["bubble", "insertion", "selection", "gnome", "cocktail", "comb", "shell", "odd-even", "cycle", "pancake", "bitonic", "quick", "merge", "heap", "intro", "tim", "sort"],
+      "algorithms": [
+        "bubble",
+        "insertion",
+        "selection",
+        "gnome",
+        "cocktail",
+        "comb",
+        "shell",
+        "odd-even",
+        "cycle",
+        "pancake",
+        "bitonic",
+        "quick",
+        "merge",
+        "heap",
+        "intro",
+        "tim",
+        "sort"
+      ],
       "notes": {
         "merge": "Stable; the reference implementation other sorts are checked against.",
         "tim": "Stable; natural-run detection + merge.",
@@ -43,12 +110,25 @@
     },
     "joke_sorts": {
       "_call": "list Sort.<algo> comparator end  ->  List",
-      "algorithms": ["bogo", "stooge", "slow"],
-      "notes": { "bogo": "Shuffle-until-sorted with a deterministic LCG and a hard cap; raises bogo_giveup past the cap, so use only on tiny inputs." }
+      "algorithms": [
+        "bogo",
+        "stooge",
+        "slow"
+      ],
+      "notes": {
+        "bogo": "Shuffle-until-sorted with a deterministic LCG and a hard cap; raises bogo_giveup past the cap, so use only on tiny inputs."
+      }
     },
     "distribution_sorts": {
       "_call": "list Sort.<algo> end  ->  List (Integers, ascending; NO comparator)",
-      "algorithms": ["counting", "pigeonhole", "radix-lsd", "radix-msd", "bucket", "bead"],
+      "algorithms": [
+        "counting",
+        "pigeonhole",
+        "radix-lsd",
+        "radix-msd",
+        "bucket",
+        "bead"
+      ],
       "notes": {
         "counting": "Handles negatives via a min offset; raises bad_input on non-Integers or a value range over 1e8.",
         "pigeonhole": "As counting.",
@@ -59,10 +139,28 @@
       }
     },
     "predicate": {
-      "is-sorted": { "call": "list Sort.is-sorted comparator end", "args": ["list:List", "comp:Comparator"], "returns": "Boolean", "note": "True iff `list` is ordered under `comp`." }
+      "is-sorted": {
+        "call": "list Sort.is-sorted comparator end",
+        "args": [
+          "list:List",
+          "comp:Comparator"
+        ],
+        "returns": "Boolean",
+        "note": "True iff `list` is ordered under `comp`."
+      }
     }
   },
   "namespaces": {
-    "Sort": { "kind": "sorting", "module": "sort.aql", "specs": ["comparators", "comparison_sorts", "joke_sorts", "distribution_sorts", "predicate"] }
+    "Sort": {
+      "kind": "sorting",
+      "module": "sort.aql",
+      "specs": [
+        "comparators",
+        "comparison_sorts",
+        "joke_sorts",
+        "distribution_sorts",
+        "predicate"
+      ]
+    }
   }
 }
