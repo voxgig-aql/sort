@@ -1,11 +1,11 @@
 # sort
 
 A dependency-light **sorting library** implemented in
-[AQL](https://github.com/aql-lang/aql) — every well-known sorting
-algorithm, over every AQL type, driven by composable **comparators**.
+[boru](https://github.com/boru-lang/boru) — every well-known sorting
+algorithm, over every boru type, driven by composable **comparators**.
 Sorts return a new sorted list and never mutate their input.
 
-```aql
+```boru
 import "./sort.aql"
 
 print (([5 3 8 1] Sort.quick Sort.by-number end)) end                # => [1, 3, 5, 8]
@@ -18,12 +18,12 @@ print (([170 45 75 2 802 24] Sort.radix-lsd end)) end                # => [2, 24
 > works; only `Sort.<algo> list comparator` misbinds. Pass your own
 > comparator with `/r`; namespace comparators (`Sort.by-number`) go bare.
 
-> **Forking this to build a new AQL library?** This repo is a GitHub
+> **Forking this to build a new boru library?** This repo is a GitHub
 > template — read **[TEMPLATE.md](TEMPLATE.md)** for the instantiation
 > checklist, then delete it.
 
 > **Calling this library from an AI coding agent?** Read
-> **[AGENTS.md](AGENTS.md)** first — the exact AQL calling convention,
+> **[AGENTS.md](AGENTS.md)** first — the exact boru calling convention,
 > verified idioms, and common mistakes. (Claude Code auto-loads it via
 > `CLAUDE.md`; a portable skill lives in
 > [`.claude/skills/sort-aql`](.claude/skills/sort-aql/SKILL.md).)
@@ -44,7 +44,7 @@ Sort anything by supplying a comparator — a two-argument function
 returning a negative/zero/positive `Integer`, the same contract as the
 built-in `cmp`:
 
-```aql
+```boru
 def by-len fn [[b:Any a:Any] [Integer] [ (a size) (b size) cmp ]]
 print ((["bbb" "a" "cc"] Sort.merge by-len/r end)) end   # => ['a', 'cc', 'bbb']
 ```
@@ -81,7 +81,7 @@ the [Reference](docs/reference.md).
 ## For AI coding agents
 
 If an agent will call this library, point it at **[AGENTS.md](AGENTS.md)**
-— the exact AQL calling convention, verified idioms, and the common
+— the exact boru calling convention, verified idioms, and the common
 mistakes to avoid.
 
 To make that guidance available in *another* project that uses this
@@ -94,8 +94,8 @@ library, install the bundled skill either way:
 - **Install the plugin** — this repo is also a plugin marketplace:
 
   ```
-  /plugin marketplace add voxgig-aql/sort
-  /plugin install sort-aql@voxgig-aql
+  /plugin marketplace add voxgig-boru/sort
+  /plugin install sort-aql@voxgig-boru
   ```
 
 Working inside *this* repo, Claude Code picks the guidance up
@@ -123,20 +123,20 @@ algorithm must return the same ordering as the stable `Sort.merge`.
 
 ## Running it
 
-Build the `aql` interpreter, then run any script or test — see
+Build the `boru` interpreter, then run any script or test — see
 [How-to → Install and run](docs/how-to.md#install-and-run-aql) and
 [Run the tests](docs/how-to.md#run-the-tests):
 
 ```bash
-aql test/sort_unit_test.aql   # unit tests — direct
-aql test/sort_unit_spec.aql   # unit tests — declarative spec format
-aql test/sort_prop_test.aql   # property tests — direct
-aql test/sort_prop_spec.aql   # property tests — declarative spec format
-aql test/sort_smoke_test.aql  # end-to-end smoke run
+boru test/sort_unit_test.aql   # unit tests — direct
+boru test/sort_unit_spec.aql   # unit tests — declarative spec format
+boru test/sort_prop_test.aql   # property tests — direct
+boru test/sort_prop_spec.aql   # property tests — declarative spec format
+boru test/sort_smoke_test.aql  # end-to-end smoke run
 ```
 
 A GitHub Actions workflow
-([`.github/workflows/test.yml`](.github/workflows/test.yml)) builds aql from a
+([`.github/workflows/test.yml`](.github/workflows/test.yml)) builds boru from a
 pinned commit and runs every suite — plus a `consistency` job (agent-skill
 drift, JSON manifests, and a pinned-ref guard) — on each push and pull request.
 

@@ -2,7 +2,7 @@
 #
 # Times each representative algorithm sorting a fixed, deterministic
 # pseudo-random Integer array and prints one `<algo> <ms>` line per run
-# (execution-only wall-clock via aql:time-util, so process start + parse
+# (execution-only wall-clock via boru:time-util, so process start + parse
 # are excluded). Run it through both aql surfaces to get the baseline —
 # see bench/run.sh, which drives it under the interpreter (AQL_NO_COMPILE=1)
 # and the bytecode VM (default) and tabulates the two columns.
@@ -17,7 +17,7 @@
 # meaningful.
 
 import "./sort.aql" end
-import "aql:time-util" end
+import "boru:time-util" end
 
 # Deterministic pseudo-random fill: Knuth-multiplicative hash of the index,
 # folded into [0, span). No RNG needed, so every run sorts the same data.

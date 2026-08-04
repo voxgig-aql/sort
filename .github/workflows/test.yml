@@ -1,9 +1,9 @@
 name: tests
 
-# The sort module is written in AQL, so CI has to build the `aql`
+# The sort module is written in boru, so CI has to build the `boru`
 # interpreter from source before it can run anything. The language has no
 # tagged release yet and has shipped breaking changes between commits, so
-# we pin AQL_REF to the exact commit this module is verified against. Bump
+# we pin BORU_REF to the exact commit this module is verified against. Bump
 # it (and re-run the suites locally) when adopting a newer aql.
 on:
   push:
@@ -25,63 +25,63 @@ jobs:
         with:
           go-version: '1.24'
 
-      # The compiled binary only depends on AQL_REF (and the OS), so a
+      # The compiled binary only depends on BORU_REF (and the OS), so a
       # hit here lets us skip the clone + build entirely.
-      - name: Resolve aql main HEAD
-        id: aqlref
-        run: echo "sha=$(git ls-remote https://github.com/aql-lang/aql.git main | cut -f1)" >> "$GITHUB_OUTPUT"
+      - name: Resolve boru main HEAD
+        id: boruref
+        run: echo "sha=$(git ls-remote https://github.com/boru-lang/boru.git main | cut -f1)" >> "$GITHUB_OUTPUT"
 
-      - name: Cache aql binary
-        id: cache-aql
+      - name: Cache boru binary
+        id: cache-boru
         uses: actions/cache@v4
         with:
-          path: ~/.local/bin/aql
-          key: aql-${{ steps.aqlref.outputs.sha }}-${{ runner.os }}
+          path: ~/.local/bin/boru
+          key: boru-${{ steps.boruref.outputs.sha }}-${{ runner.os }}
 
-      - name: Check out aql source
-        if: steps.cache-aql.outputs.cache-hit != 'true'
+      - name: Check out boru source
+        if: steps.cache-boru.outputs.cache-hit != 'true'
         uses: actions/checkout@v4
         with:
-          repository: aql-lang/aql
-          ref: ${{ steps.aqlref.outputs.sha }}
-          path: aql-src
+          repository: boru-lang/boru
+          ref: ${{ steps.boruref.outputs.sha }}
+          path: boru-src
 
       # The documented `go install …/cmd/go/aql@latest` cannot work
       # while cmd/go/go.mod carries replace directives, so we build from
       # the clone with -mod=mod instead.
-      - name: Build aql
-        if: steps.cache-aql.outputs.cache-hit != 'true'
+      - name: Build boru
+        if: steps.cache-boru.outputs.cache-hit != 'true'
         run: |
           mkdir -p "$HOME/.local/bin"
-          cd aql-src/cmd/go
+          cd boru-src/cmd/go
           GOWORK=off GOFLAGS=-mod=mod go build \
-            -ldflags "-X github.com/aql-lang/aql/cmd/go.Version=${{ steps.aqlref.outputs.sha }}" \
-            -o "$HOME/.local/bin/aql" ./aql
+            -ldflags "-X github.com/boru-lang/boru/cmd/go.Version=${{ steps.boruref.outputs.sha }}" \
+            -o "$HOME/.local/bin/boru" ./boru
 
-      - name: Add aql to PATH
+      - name: Add boru to PATH
         run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Report aql version
-        run: aql -version
+      - name: Report boru version
+        run: boru -version
 
       # Each suite ends with `0 test.fail-count end assert.equal`, so a
-      # failure makes aql exit non-zero and fails the step.
+      # failure makes boru exit non-zero and fails the step.
       - name: Unit tests (direct)
-        run: aql test/sort_unit_test.aql
+        run: boru test/sort_unit_test.aql
 
       - name: Unit tests (spec format)
-        run: aql test/sort_unit_spec.aql
+        run: boru test/sort_unit_spec.aql
 
       - name: Property tests (direct)
-        run: aql test/sort_prop_test.aql
+        run: boru test/sort_prop_test.aql
 
       - name: Property tests (spec format)
-        run: aql test/sort_prop_spec.aql
+        run: boru test/sort_prop_spec.aql
 
       - name: Smoke test
-        run: aql test/sort_smoke_test.aql
+        run: boru test/sort_smoke_test.aql
 
-      # Advisory static check — NOT a gate. `aql check`'s static analysis
+      # Advisory static check — NOT a gate. `boru check`'s static analysis
       # has known false positives on first-class function values, and this
       # library threads comparator FUNCTIONS through every sort (and uses a
       # recursive radix-msd), so the checker flags a handful of those call
@@ -91,12 +91,12 @@ jobs:
       # == byte compiler — is gated by the `divergence` job below.
       - name: Static check (advisory, non-gating)
         continue-on-error: true
-        run: aql check --soft sort.aql
+        run: boru check --soft sort.aql
 
   # Gating guard: every suite must interpret cleanly AND match under the
-  # byte compiler (`aql --compile`). The `aql check` surface is reported but
+  # byte compiler (`boru --compile`). The `boru check` surface is reported but
   # ADVISORY (see the note above and test/divergence/README.md). run.sh
-  # builds its own aql (same pinned ref, via codeload tarball) and is
+  # builds its own boru (same pinned ref, via codeload tarball) and is
   # self-contained.
   divergence:
     runs-on: ubuntu-latest
@@ -113,9 +113,9 @@ jobs:
         run: test/divergence/run.sh
 
   # Lightweight guard for the agent-skill packaging and the pinned-ref single
-  # source of truth (no aql needed). The plugin must bundle its own copy of the
+  # source of truth (no boru needed). The plugin must bundle its own copy of the
   # skill — plugins can't point at an external .claude/skills dir — so two
-  # copies exist and can drift; and the aql commit is pinned in several files
+  # copies exist and can drift; and the boru commit is pinned in several files
   # that must agree.
   consistency:
     runs-on: ubuntu-latest

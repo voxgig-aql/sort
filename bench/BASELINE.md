@@ -4,24 +4,24 @@ Reference numbers for the Sort library, produced by `bench/run.sh` (see
 that script and `bench/sort_bench.aql` for the workload). Reproduce with:
 
 ```bash
-AQL=/path/to/aql bench/run.sh
+boru=/path/to/aql bench/run.sh
 ```
 
 **These numbers are indicative, not absolute.** They were measured in a
 shared cloud container under variable load, at small sizes chosen so the
 (slow) interpreter finishes in seconds. Their value is *relative*: ranking
-the algorithms and tracking the interpreter-vs-bytecode gap across aql
-versions — not comparing AQL against a native sort. AQL threads a
+the algorithms and tracking the interpreter-vs-bytecode gap across boru
+versions — not comparing boru against a native sort. boru threads a
 first-class comparator function through every element move, and that
 per-comparison dispatch, not the algorithm, dominates the wall-clock.
 
-This snapshot was taken with the branch build of aql (latest `main`, the
+This snapshot was taken with the branch build of boru (latest `main`, the
 check-mode return-count fix, and the definition-site analysis-quota fix
 that lets the whole library `--force-compile` without refusal); the bench
 runs with `AQL_NO_CHECK=1`, so its runtime timings are representative of
 the module's pinned `6185620` build too. The `bucket` / `shell` rows in
 particular reflect the `flex[0]`+`set` index-cursor refactor, which is a
-library change independent of the aql version.
+library change independent of the boru version.
 
 ## Snapshot — n_small=200 / n_large=800, best-of-2, 30s cap
 
@@ -52,8 +52,8 @@ VM, the default; `>30s` = the interpreter run exceeded the per-run cap; a
 - **The bytecode VM is the mode that matters.** It is 4–40× faster than
   the interpreter here; the interpreter is impractically slow for the
   O(n log n) sorts at n=800 (quick / intro / shell / sort / tim run tens
-  of seconds or overrun the cap). Run library code with `aql` (compile is
-  the default) or `aql --compile`, never `AQL_NO_COMPILE=1`.
+  of seconds or overrun the cap). Run library code with `boru` (compile is
+  the default) or `boru --compile`, never `AQL_NO_COMPILE=1`.
 - **`sort` (the recommended default, a stable merge sort), `merge`,
   `radix-lsd`, `counting`, and `bucket` all lower cleanly and fly.**
 - **`bucket` now shows ~22×** (67 ms compiled vs 1471 ms interpreted):
@@ -64,7 +64,7 @@ VM, the default; `>30s` = the interpreter run exceeded the per-run cap; a
   ~1.0×). Building the cursor empty and inert — `flex[0]` then `set` — lets
   the body lower; `shell` carried the same shape and the same fix.
 - **The whole library and every test suite now `--force-compile` with no
-  refusal.** That additionally needed an aql fix: the per-fn analysis
+  refusal.** That additionally needed an boru fix: the per-fn analysis
   quota was keyed by bare fn name, so every higher-order `each$body`
   closure across the program shared one budget and a 64-plus-closure
   module bailed later loops to an unresolvable `Any` (a "code-body word
@@ -72,7 +72,7 @@ VM, the default; `>30s` = the interpreter run exceeded the per-run cap; a
   Both surfaces always produced identical, correct output; this closes the
   `--force-compile` gap the divergence harness's advisory column noted.
 - **`tim` has no compiled number**: at n≥500 its run-detection + merge is
-  step-heavy enough to exceed aql's default runtime step budget (10M) and
+  step-heavy enough to exceed boru's default runtime step budget (10M) and
   raise `evaluation_limit`. It is correct (the property suite cross-checks
   it against `merge`) but its constant factor is high in this
   implementation — a candidate for a future library optimisation.

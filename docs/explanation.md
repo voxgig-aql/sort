@@ -10,9 +10,9 @@ done*, the [How-to guides](how-to.md).
 ## What the library is for
 
 It is a catalogue of sorting algorithms — every well-known comparison
-sort, the main distribution sorts, and a few joke sorts — over every AQL
+sort, the main distribution sorts, and a few joke sorts — over every boru
 type, driven by a single small abstraction: the **comparator**. You pick
-an algorithm and an ordering, write them in AQL's data-first shape, and
+an algorithm and an ordering, write them in boru's data-first shape, and
 get back a new sorted list:
 
 ```
@@ -23,7 +23,7 @@ The design goal is that the *ordering* and the *algorithm* are
 independent. Any comparator works with any comparison algorithm, and you
 swap one without touching the other. The rest of this page explains why
 that boundary is a comparator, why the sorts hand back new lists instead
-of mutating in place, and the AQL idioms that make both work.
+of mutating in place, and the boru idioms that make both work.
 
 ---
 
@@ -46,7 +46,7 @@ bespoke algorithm.
 
 This is the same separation C's `qsort` makes with its comparison
 callback, Python's `key=`/`cmp` parameters, and the JS `Array.sort`
-comparator — a well-worn boundary. What is particular to AQL is *how* a
+comparator — a well-worn boundary. What is particular to boru is *how* a
 comparator is represented and passed, which the next sections cover.
 
 ### What a comparator is
@@ -57,7 +57,7 @@ sorts before the second, zero if they are equivalent, positive if after.
 Only the sign matters — magnitude is ignored — so the contract is exactly
 that of the built-in `cmp`.
 
-```aql
+```boru
 def by-length fn [
   [b:Any a:Any] [Integer] [ (a size) (b size) cmp ]
 ]
@@ -65,7 +65,7 @@ def by-length fn [
 
 Two conventions are worth internalising. First, the body is written in
 terms of `a` (the *earlier* item) and `b` (the *later* one), so "`a`
-before `b` ⇒ negative" reads naturally; AQL's rule that the first
+before `b` ⇒ negative" reads naturally; boru's rule that the first
 signature parameter is the top of the stack is what makes `a` the earlier
 item when a sort invokes `xi xj comp`. Second, the built-in comparators
 defer to `cmp` rather than computing `a - b`. A three-way `cmp` never
@@ -120,18 +120,18 @@ and the library ships both.
 
 ---
 
-## The AQL idioms it rests on
+## The boru idioms it rests on
 
 The comparator abstraction is clean in principle, but making it work in
-AQL leans on a few language facts worth understanding.
+boru leans on a few language facts worth understanding.
 
 ### Postfix, terminated calls
 
-AQL is not C/Python/JS: there is no `sort(list, cmp)` and no
+boru is not C/Python/JS: there is no `sort(list, cmp)` and no
 `list.sort(cmp)`. A call is **data first, verb next, arguments after**,
 terminated with `end` (or wrapped in parens):
 
-```aql
+```boru
 list Sort.quick Sort.by-number end
 ```
 
@@ -144,7 +144,7 @@ which is why `(xs Sort.quick Sort.by-number)` works too.
 ### Function values and `/r`
 
 A comparator has to be passed *as a value* — handed to the sort to call
-later — not invoked at the call site. AQL's default is to invoke: a bare
+later — not invoked at the call site. boru's default is to invoke: a bare
 word runs. The `/r` suffix is what defers it, parking the word as a value
 instead of calling it. So your own comparator and the built-in `cmp` are
 passed `mycmp/r`, `cmp/r`. The comparators in the `Sort` namespace
@@ -154,7 +154,7 @@ direction.
 
 ### The single-module requirement
 
-A comparator is a function value, and when a sort invokes it, AQL resolves
+A comparator is a function value, and when a sort invokes it, boru resolves
 the comparator's free words — any helper it calls — in **the module that
 runs it**. The library's `Sort.natural`, for instance, calls a private
 digit-run scanner; that scanner has to be visible where `natural` actually
@@ -171,14 +171,14 @@ The divide-and-conquer sorts (`quick`, `merge`, `heap`, `intro`,
 `bitonic`, `tim`, and the recursive joke sorts) recurse, and each
 recursive call needs the comparator. It is threaded directly as a
 `comp:Function` parameter: each frame invokes it bare (`xi xj comp`) and
-forwards it to the recursive calls with `comp/r`. (An earlier aql build
+forwards it to the recursive calls with `comp/r`. (An earlier boru build
 had a one-shot restriction on re-parking a function parameter with `/r`,
 which forced a one-cell FlexList "box" workaround; that bug is fixed
 upstream, so the box is gone.)
 
 ### Bounded loops instead of `while`
 
-AQL offers no `while`, so the data-dependent loops (gnome's cursor walk,
+boru offers no `while`, so the data-dependent loops (gnome's cursor walk,
 comb's gap shrink, bogo's shuffle, …) are written as bounded `iota` loops
 with an explicit state cell, where the bound is a proven worst-case step
 count for that algorithm. The loop always reaches the sorted state and

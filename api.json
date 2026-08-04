@@ -12,8 +12,8 @@
     "distribution_sorts": "The distribution sorts (counting, pigeonhole, radix-lsd, radix-msd, bucket, bead) take NO comparator and order Integers ascending; radix and bead require non-negative Integers.",
     "import_resolution": "relative to the working directory the script is run from, not the importing file",
     "external_deps": [
-      "aql:string-util",
-      "aql:math-util"
+      "boru:string-util",
+      "boru:math-util"
     ],
     "errors": "failures raise coded errors caught with `do [...] error [...]`; read e.code / e.message. Codes: bad_input (a distribution sort got a non-Integer, or radix/bead got a negative, or the value range is too large), bogo_giveup (Sort.bogo exceeded its shuffle cap)."
   },

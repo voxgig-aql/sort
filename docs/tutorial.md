@@ -1,9 +1,9 @@
 # Tutorial: your first sort
 
-This is a hands-on lesson. By the end you will have built a small AQL
+This is a hands-on lesson. By the end you will have built a small boru
 script that sorts numbers, sorts strings, sorts by a comparator you write
 yourself, and sorts a list of filenames into *natural* (alphanumeric)
-order. You need no prior knowledge of this library — just a working `aql`
+order. You need no prior knowledge of this library — just a working `boru`
 binary (see [How-to → Install and run](how-to.md#install-and-run-aql))
 and this repository checked out.
 
@@ -19,7 +19,7 @@ build it up in pieces and run it after each step.
 
 Create a file `play.aql` next to `sort.aql` with this content:
 
-```aql
+```boru
 import "./sort.aql"
 
 # Print one value per statement, fully grouped — `print (value) end` —
@@ -32,12 +32,12 @@ print (([5 3 8 1 9 2] Sort.quick Sort.by-number end)) end
 Read that call left to right: the **data comes first** (`[5 3 8 1 9 2]`),
 then the verb (`Sort.quick`), then the **comparator** that decides the
 order (`Sort.by-number`), and the whole call is terminated with `end`.
-This is AQL's universal shape — receiver first, then the word, then any
+This is boru's universal shape — receiver first, then the word, then any
 extra arguments. There is no `sort(list, cmp)` and no `list.sort(cmp)`
 here. Run it:
 
 ```console
-$ aql play.aql
+$ boru play.aql
 [1, 2, 3, 5, 8, 9]
 ```
 
@@ -57,12 +57,12 @@ The only thing that changes when you sort a different kind of data is the
 comparator. For strings, reach for `Sort.by-string`, which orders them
 lexicographically (by character code). Append below the first line:
 
-```aql
+```boru
 print ((["pear" "Apple" "fig"] Sort.merge Sort.by-string end)) end
 ```
 
 ```console
-$ aql play.aql
+$ boru play.aql
 [1, 2, 3, 5, 8, 9]
 ["Apple", "fig", "pear"]
 ```
@@ -70,7 +70,7 @@ $ aql play.aql
 `"Apple"` sorts first because an uppercase `A` (code point 65) comes
 before the lowercase letters (`f`, `p` are 102, 112). That is plain
 lexicographic order — we will fix the case-sensitivity in a moment. Note
-the `end` after every call: AQL words look ahead for arguments, and `end`
+the `end` after every call: boru words look ahead for arguments, and `end`
 marks where the call stops. Forget it and the next token gets swallowed
 as an argument.
 
@@ -85,7 +85,7 @@ item should sort before / equal to / after the second — exactly the
 contract of the built-in `cmp`. Let's order strings by **length** instead
 of alphabetically. Add:
 
-```aql
+```boru
 def by-length fn [
   [b:Any a:Any] [Integer] [ (a size) (b size) cmp ]
 ]
@@ -94,7 +94,7 @@ print ((["bbb" "a" "cc"] Sort.merge by-length/r end)) end
 ```
 
 ```console
-$ aql play.aql
+$ boru play.aql
 ...
 ["a", "cc", "bbb"]
 ```
@@ -114,12 +114,12 @@ they need no `/r`.)
 
 Here is the headline utility. Imagine sorting a list of filenames:
 
-```aql
+```boru
 print ((["file10" "file2" "file1"] Sort.merge Sort.by-string end)) end
 ```
 
 ```console
-$ aql play.aql
+$ boru play.aql
 ...
 ["file1", "file10", "file2"]
 ```
@@ -129,12 +129,12 @@ That is almost certainly *not* what you want: `"file10"` lands before
 in `Sort.natural`, which compares embedded runs of digits by their
 **numeric value**:
 
-```aql
+```boru
 print ((["file10" "file2" "file1"] Sort.merge Sort.natural end)) end
 ```
 
 ```console
-$ aql play.aql
+$ boru play.aql
 ...
 ["file1", "file2", "file10"]
 ```
@@ -150,7 +150,7 @@ One last idea that shapes how you use the library: a sort never modifies
 its input. It returns a brand-new sorted list and leaves the original
 alone. See it directly:
 
-```aql
+```boru
 def original [3 1 2]
 def sorted (original Sort.quick Sort.by-number end)
 print (original) end
@@ -158,7 +158,7 @@ print (sorted) end
 ```
 
 ```console
-$ aql play.aql
+$ boru play.aql
 ...
 [3, 1, 2]
 [1, 2, 3]

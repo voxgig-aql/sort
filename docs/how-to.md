@@ -6,7 +6,7 @@ sort is called; if not, start with the [Tutorial](tutorial.md). For the
 [Explanation](explanation.md); for exact signatures, the
 [Reference](reference.md).
 
-- [Install and run aql](#install-and-run-aql)
+- [Install and run boru](#install-and-run-aql)
 - [Sort by a custom comparator](#sort-by-a-custom-comparator)
 - [Sort in descending order](#sort-in-descending-order)
 - [Sort by a key](#sort-by-a-key)
@@ -19,35 +19,35 @@ sort is called; if not, start with the [Tutorial](tutorial.md). For the
 
 ---
 
-## Install and run aql
+## Install and run boru
 
-The module is written in AQL, which has no tagged release yet, so build
+The module is written in boru, which has no tagged release yet, so build
 the interpreter from source (the documented `go install …/aql@latest`
 fails on the repo's replace directives). A plain `git clone` may be
 blocked, so fetch the pinned commit as a codeload tarball:
 
 ```bash
 mkdir -p /tmp/aql-source
-curl -fsSL https://codeload.github.com/aql-lang/aql/tar.gz/618562025d9e0154107306927911a8b1b046333c \
+curl -fsSL https://codeload.github.com/boru-lang/boru/tar.gz/618562025d9e0154107306927911a8b1b046333c \
   | tar -xz -C /tmp/aql-source --strip-components=1
 cd /tmp/aql-source/cmd/go
-GOFLAGS=-mod=mod go build -o "$HOME/.local/bin/aql" ./aql
+GOFLAGS=-mod=mod go build -o "$HOME/.local/bin/boru" ./boru
 ```
 
 Make sure `$HOME/.local/bin` is on your `PATH`, then check it:
 
 ```bash
-aql -version
-# => aql 618562025d9e0154107306927911a8b1b046333c
+boru -version
+# => boru 618562025d9e0154107306927911a8b1b046333c
 ```
 
 Run any script in this repo by passing its path:
 
 ```bash
-aql test/sort_smoke_test.aql
+boru test/sort_smoke_test.aql
 ```
 
-This module is verified against aql commit `6185620`; the CI workflow
+This module is verified against boru commit `6185620`; the CI workflow
 pins the same commit.
 
 ---
@@ -59,7 +59,7 @@ A comparator is a two-argument function value returning a negative / zero
 second. Define one with `fn` and pass it with a **`/r`** suffix so it is
 handed over as a value rather than invoked on the spot:
 
-```aql
+```boru
 import "./sort.aql"
 
 def by-length fn [
@@ -74,7 +74,7 @@ Write the body in terms of `a` (the earlier item) and `b` (the later one),
 and defer to the native `cmp` rather than subtracting — `cmp` is a
 three-way compare with no overflow risk. To order records by a field:
 
-```aql
+```boru
 def by-second fn [
   [b:Any a:Any] [Integer] [ (a get 1) (b get 1) cmp ]
 ]
@@ -93,14 +93,14 @@ Don't write a second, reversed comparator — wrap an existing one with the
 `Sort.reverse` combinator. It takes a comparator and returns a new one
 that reverses its verdict:
 
-```aql
+```boru
 print (([5 3 8 1 9 2] Sort.quick (Sort.by-number Sort.reverse) end)) end
 # => [9, 8, 5, 3, 2, 1]
 ```
 
 `reverse` composes with any comparator, including ones you build:
 
-```aql
+```boru
 def by-length fn [[b:Any a:Any] [Integer] [ (a size) (b size) cmp ]]
 print ((["bbb" "a" "cc"] Sort.merge (by-length/r Sort.reverse) end)) end
 # => ["bbb", "cc", "a"]
@@ -115,7 +115,7 @@ computed score) rather than by the items themselves. `Sort.by-key` takes a
 **key function** — one argument in, the key out — and returns a comparator
 that orders items by their keys (compared with the native `cmp`):
 
-```aql
+```boru
 def length-of fn [[s:Any] [Integer] [ s size ]]
 print ((["bbb" "a" "cc"] Sort.merge (length-of/r Sort.by-key) end)) end
 # => ["a", "cc", "bbb"]
@@ -134,7 +134,7 @@ precedes `2`). `Sort.natural` compares embedded runs of digits by their
 **numeric value** instead, which is almost always what you want for
 filenames, versions, and labels:
 
-```aql
+```boru
 print ((["file10" "file2" "file1"] Sort.merge Sort.natural end)) end
 # => ["file1", "file2", "file10"]
 ```
@@ -149,7 +149,7 @@ It handles digit runs anywhere in the string, so `"x9"` sorts before
 `Sort.by-string` is case-sensitive — every uppercase letter sorts before
 every lowercase one. For a case-folded order, use `Sort.case-insensitive`:
 
-```aql
+```boru
 print ((["HELLO" "abc" "Zebra"] Sort.merge Sort.case-insensitive end)) end
 # => ["abc", "HELLO", "Zebra"]
 ```
@@ -180,7 +180,7 @@ above. The joke sorts (`bogo`, `stooge`, `slow`) are deliberately
 inefficient and exist for demonstration only. The full complexity and
 stability table is in the [Reference](reference.md#comparison-sorts).
 
-```aql
+```boru
 print (([5 3 8 1 9 2] Sort.sort Sort.by-number end)) end   # => [1, 2, 3, 5, 8, 9]
 print (([5 3 8 1 9 2] Sort.tim  Sort.by-number end)) end   # => [1, 2, 3, 5, 8, 9]
 ```
@@ -193,14 +193,14 @@ When your data is **Integers**, the distribution sorts skip comparisons
 entirely and order by counting or bucketing. They take **no comparator**
 and always sort ascending:
 
-```aql
+```boru
 print (([170 45 75 90 2 802 24 66] Sort.radix-lsd end)) end
 # => [2, 24, 45, 66, 75, 90, 170, 802]
 ```
 
 `Sort.counting` and `Sort.pigeonhole` also accept **negative** Integers:
 
-```aql
+```boru
 print (([5 -2 8 -1 0] Sort.counting end)) end
 # => [-2, -1, 0, 5, 8]
 ```
@@ -220,7 +220,7 @@ Failures raise coded errors. Wrap the call in `do … error …`; inside the
 handler the Error value is on the stack, with `code` and `message`
 fields. Read the code to branch:
 
-```aql
+```boru
 def result (do [["a" "b"] Sort.counting end] error [ get code ])
 print (result) end
 # => bad_input
@@ -228,7 +228,7 @@ print (result) end
 
 The message says exactly what was wrong:
 
-```aql
+```boru
 def msg (do [[3 -1 2] Sort.radix-lsd end] error [ get message ])
 print (msg) end
 # => Sort.radix-lsd: needs non-negative Integers (got -1)
@@ -241,8 +241,8 @@ only on tiny inputs). To dispatch on the code, use `case` —
 `get code case [bad_input/q "clean the input" "unexpected"]`. In a test,
 assert the failure instead:
 
-```aql
-import "aql:test"
+```boru
+import "boru:test"
 [["a" "b"] Sort.counting end] Assert.throws end
 def e (do [["a" "b"] Sort.counting end])
 bad_input/q (e get code) Assert.equal end
@@ -255,14 +255,14 @@ bad_input/q (e get code) Assert.equal end
 
 ## Run the tests
 
-Five suites ship with the module. Run them with `aql`:
+Five suites ship with the module. Run them with `boru`:
 
 ```bash
-aql test/sort_unit_test.aql   # example-based unit tests — direct (aql:test)
-aql test/sort_unit_spec.aql   # example-based unit tests — declarative spec format
-aql test/sort_prop_test.aql   # property tests — direct Test.check-prop form
-aql test/sort_prop_spec.aql   # property tests — declarative spec format
-aql test/sort_smoke_test.aql  # end-to-end walk-through over every public word
+boru test/sort_unit_test.aql   # example-based unit tests — direct (boru:test)
+boru test/sort_unit_spec.aql   # example-based unit tests — declarative spec format
+boru test/sort_prop_test.aql   # property tests — direct Test.check-prop form
+boru test/sort_prop_spec.aql   # property tests — declarative spec format
+boru test/sort_smoke_test.aql  # end-to-end walk-through over every public word
 ```
 
 The file names follow a consistent convention: `_test.aql` is a direct
@@ -283,20 +283,20 @@ explicitly. The properties cross-check every algorithm against the stable
 `Sort.merge` reference and assert the no-mutation and is-sorted invariants.
 
 Each assertion-bearing test file ends by asserting `Test.fail-count` is
-`0` and printing `all green`, so a failure makes `aql` exit non-zero —
+`0` and printing `all green`, so a failure makes `boru` exit non-zero —
 which is exactly what the CI workflow checks on every push and pull
 request.
 
 One more check sits outside this set. `test/divergence/` runs every suite
-through all three of aql's execution surfaces — the interpreter, `aql
-check` (static type-check), and the byte compiler (`aql --compile`) — and
+through all three of boru's execution surfaces — the interpreter, `boru
+check` (static type-check), and the byte compiler (`boru --compile`) — and
 asserts none errors or disagrees. Run it with:
 
 ```bash
 test/divergence/run.sh
 ```
 
-It builds a newer aql (the `--compile` CLI postdates this module's pin)
+It builds a newer boru (the `--compile` CLI postdates this module's pin)
 and prints a per-suite interpreter/check/bytecode matrix. See
 [`test/divergence/README.md`](../test/divergence/README.md) for details.
 
@@ -304,19 +304,19 @@ and prints a per-suite interpreter/check/bytecode matrix. See
 
 `bench/` holds a performance baseline: `bench/sort_bench.aql` times each
 representative algorithm sorting a fixed, deterministic array (execution-
-only, via `aql:time-util`), and `bench/run.sh` drives each `(algorithm,
+only, via `boru:time-util`), and `bench/run.sh` drives each `(algorithm,
 surface)` as its own process — under the interpreter (`AQL_NO_COMPILE=1`)
 and the bytecode VM (the default) — reporting the best-of-N milliseconds
 per algorithm and the interpreter/compiled speedup:
 
 ```bash
-AQL=/path/to/aql bench/run.sh          # default 3 reps, best-of
+boru=/path/to/aql bench/run.sh          # default 3 reps, best-of
 ```
 
-The sizes are deliberately small: AQL threads a first-class comparator
+The sizes are deliberately small: boru threads a first-class comparator
 through every element move, so the per-comparison function dispatch — not
 the algorithm — dominates the wall-clock. The numbers are for ranking
-algorithms and tracking the interpreter/bytecode gap across aql versions,
+algorithms and tracking the interpreter/bytecode gap across boru versions,
 not for comparing against native sorts. `BENCH_TIMEOUT=<secs>` bounds any
 single run so a slow configuration is skipped rather than left to hang.
 A recorded snapshot lives in [`bench/BASELINE.md`](../bench/BASELINE.md).

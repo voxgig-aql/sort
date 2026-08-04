@@ -39,8 +39,8 @@
 #   bad_input    a distribution sort got a non-Integer / out-of-span item
 #   bogo_giveup  Sort.bogo exceeded its safety cap without sorting
 
-import "aql:string-util"
-import "aql:math-util"
+import "boru:string-util"
+import "boru:math-util"
 
 
 # ====================================================================
