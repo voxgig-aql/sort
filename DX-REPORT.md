@@ -1,19 +1,19 @@
-# Developer-experience report — building the `Sort` library in AQL
+# Developer-experience report — building the `Sort` library in boru
 
 A field report from converting this repository into the `Sort`
 sorting-algorithms library: 25 algorithms and a set of comparators, built
-and verified against **`aql-lang/aql @ 12a44e0`** (the pinned commit; see
+and verified against **`boru-lang/boru @ 12a44e0`** (the pinned commit; see
 `api.json`). Every snippet below was run against that build; the observed
 output is shown inline.
 
 The goal of this document is to save the next person time, and to give the
-`aql` maintainers a prioritized list of sharp edges. It is deliberately
+`boru` maintainers a prioritized list of sharp edges. It is deliberately
 balanced — [§9](#9-what-worked-well) covers what made the build *pleasant*,
 which was a lot.
 
-## Update (DX-driven aql fixes)
+## Update (DX-driven boru fixes)
 
-A later aql build acted on some of the issues below, so the library was
+A later boru build acted on some of the issues below, so the library was
 migrated to match it. The accessor family was split: `get`/`getr` now
 **evaluate** their key, so a bare literal field name after `get` is an
 `undefined_word` error by design — literal-field reads move to the new
@@ -27,11 +27,11 @@ is fixed, so every divide-and-conquer sort now threads the comparator
 **directly** as its `comp:Function` parameter — invoked bare (`xi xj comp`)
 and forwarded with `comp/r` — and the recursive `radix-msd` `no_signature`
 false positive ([§6](#6-tooling--the-static-checker-aql-check)) is gone, so
-`aql check sort.aql` is now **0 errors**. (Note: the `def cf (comp/r)`
+`boru check sort.aql` is now **0 errors**. (Note: the `def cf (comp/r)`
 local form of [§1.2](#12-the-def-cf-compr-workaround-trips-the-static-checker)
 still trips the checker's `undefined_word` false positive, so the box
 collapses to the parameter itself rather than to a `cf` local.) These
-changes require an aql build carrying those fixes; on the original pinned
+changes require an boru build carrying those fixes; on the original pinned
 build they will not run/check clean.
 
 ## Severity legend
@@ -59,7 +59,7 @@ most of the time went.
 `word/r` defers a word as a value. On a **parameter**, the second `/r` in
 the same scope fails:
 
-```aql
+```boru
 def mycmp fn [[b:Integer a:Integer] [Integer] [ (a cmp b) ]]
 def use1  fn [[comp:Function x:Integer y:Integer] [Integer] [ (x y comp) ]]
 def two   fn [[comp:Function a:Integer b:Integer] [Integer] [
@@ -78,16 +78,16 @@ This is the first half of the box pattern below.
 
 ### 1.2 🟠 The `def cf (comp/r)` workaround trips the static checker
 
-The bind-once fix runs correctly but `aql check` rejects it:
+The bind-once fix runs correctly but `boru check` rejects it:
 
-```aql
+```boru
 def go fn [[comp:Function n:Integer] [Integer] [
   def cf (comp/r)
   def _ (iota n each [var [[i] def r (i i cf/r apply) 0]])
   5 5 cf/r apply
 ]]
 # interpreter: runs fine
-# aql check:   4 errors — "undefined_word: cf"
+# boru check:   4 errors — "undefined_word: cf"
 ```
 
 Threaded through a dozen recursive sort helpers, that was **89 check
@@ -97,7 +97,7 @@ errors** in `sort.aql`, all the same false positive.
 `Array`, forward the *box* (a plain value, no `/r`), and read it back to
 invoke:
 
-```aql
+```boru
 def go fn [[comp:Function n:Integer] [Integer] [
   def box (make Array [comp/r])   # park once, into an Array cell
   def cf  (box get 0)             # read back the function value
@@ -105,7 +105,7 @@ def go fn [[comp:Function n:Integer] [Integer] [
   5 5 cf                           # invoke bare
 ]]
 # interpreter: runs fine
-# aql check:   0 errors
+# boru check:   0 errors
 ```
 
 Both forms return the same (correct) result; only the box form is
@@ -122,7 +122,7 @@ A comparator invoked via a `Function` parameter may call **non-recursive**
 helpers, but if a helper it reaches **recurses**, the self-call does not
 resolve:
 
-```aql
+```boru
 def dbl  fn [[n:Integer] [Integer] [ n mul 2 ]]                            # non-recursive
 def deep fn [[n:Integer] [Integer] [ if (n lte 0) [0] [ (n sub 1) deep ] ]] # recursive
 def hcmp fn [[b:Any a:Any] [Integer] [ def s (a dbl)  (s b cmp) ]]
@@ -176,7 +176,7 @@ All verified:
 | `5 inc/r apply` | ✅ the documented invoke form |
 | `xs Sort.quick Sort.by-number wrap` | 🟡 `Sort.by-number` **auto-invokes** because a word follows it |
 
-```aql
+```boru
 def f inc/r            # => later: error: [aql/undefined_word]: undefined word: f
 def f (inc/r)          # => binds; 5 f/r apply  =>  6
 ```
@@ -196,7 +196,7 @@ being tracked down.
 Indexing a **List** with the loop variable from `each` yields `None`;
 indexing an **Array** is fine, and even `lst get (i add 0)` is fine:
 
-```aql
+```boru
 def lst [10 20 30]
 def _ (iota 3 each [var [[i]
   print ((`lst_get=${(lst get i)}  arr_get=${((make Array lst) get i)}`)) end 0
@@ -214,7 +214,7 @@ answers until switched to an array.
 
 ### 2.2 🔴 `slice` on a list of typed values stringifies the elements
 
-```aql
+```boru
 print ((typeof ([3 1 2] get 0))) end             # => Integer
 print ((typeof (([3 1 2] slice 0 2) get 0))) end # => ProperString
 ```
@@ -246,7 +246,7 @@ word.)
 A bare `if cond [a] [b]` used as a *statement* (not the final expression)
 leaves its value on the stack, so the function returns one value too many:
 
-```aql
+```boru
 def f fn [[x:Integer] [Integer] [
   if (x gt 0) [ 99 ] [ 0 ]    # bare statement, but it yields a value
   x add 1
@@ -270,7 +270,7 @@ side effects push a sentinel `0`. Ubiquitous in the code.
 
 Both operands are always evaluated:
 
-```aql
+```boru
 print ((false and (1 div 0 gt 0))) end
 # => error: division by zero
 ```
@@ -288,7 +288,7 @@ A surprising number of useful identifiers are built-in words and cannot be
 used as a `def` name **or a parameter name**, and the collision is often
 only reported at runtime:
 
-```aql
+```boru
 def cmp fn [[b:Any a:Any] [Integer] [ 0 ]]
 # => error: [aql/reserved_word]: def cmp: 'cmp' is a built-in word and cannot be redefined
 ```
@@ -313,9 +313,9 @@ worth designing around.
 
 ---
 
-## 6. Tooling — the static checker (`aql check`) 🟠
+## 6. Tooling — the static checker (`boru check`) 🟠
 
-`aql check` is valuable but has false positives precisely where this library
+`boru check` is valuable but has false positives precisely where this library
 lives:
 
 - The `def cf (comp/r)` cluster ([§1.2](#12-the-def-cf-compr-workaround-trips-the-static-checker)) — `undefined_word: cf`.
@@ -342,21 +342,21 @@ covers those, and the comparison sorts are covered imperatively
 
 ## 7. Build / environment 🟠
 
-`git clone` of the aql source is blocked by the egress proxy; the GitHub
+`git clone` of the boru source is blocked by the egress proxy; the GitHub
 **codeload tarball** is not:
 
 ```
-$ git clone https://github.com/aql-lang/aql …
+$ git clone https://github.com/boru-lang/boru …
 fatal: unable to access '…': The requested URL returned error: 403
 
 $ curl -fsSL -o /dev/null -w "%{http_code}" \
-    https://codeload.github.com/aql-lang/aql/tar.gz/12a44e0…
+    https://codeload.github.com/boru-lang/boru/tar.gz/12a44e0…
 200
 ```
 
 Both the SessionStart hook (`.claude/hooks/session-start.sh`) and the
 divergence harness fetch via `codeload.github.com/.../tar.gz/<ref>` so a
-fresh remote session can build `aql` without a clone.
+fresh remote session can build `boru` without a clone.
 
 ---
 
@@ -369,7 +369,7 @@ fresh remote session can build `aql` without a clone.
 | §1.4 free words resolve in running module | **single-file** `sort.aql` (no `comparator.aql`) |
 | §1.5 two-capture combinator fails | `by-key` uses built-in `cmp`; `then` **dropped** |
 | §2.1 / §2.2 List `get`/`slice` corruption | sorts copy to `make Array` and work on **index bounds** |
-| §6 checker false positives | `aql check` is **advisory**; gate on interpreter == compiler |
+| §6 checker false positives | `boru check` is **advisory**; gate on interpreter == compiler |
 | §7 clone blocked | hook + harness fetch via **codeload tarball** |
 
 ---
@@ -396,7 +396,7 @@ genuinely pleasant:
 - **Interpreter ↔ byte-compiler agreement held throughout.** Every suite,
   including the keystone cross-agreement property (each algorithm must equal
   the stable `Sort.merge`, 100 runs × 15 algorithms), produced byte-identical
-  output under `aql X` and `aql --compile X`. For a library whose correctness
+  output under `boru X` and `boru --compile X`. For a library whose correctness
   *is* "all 25 algorithms agree", that guarantee was the bedrock the whole
   test strategy rests on.
 
@@ -404,7 +404,7 @@ genuinely pleasant:
 
 ## 10. Suggested upstream fixes (prioritized)
 
-1. **Teach `aql check` about `def x (param/r)` and recursive self-calls.**
+1. **Teach `boru check` about `def x (param/r)` and recursive self-calls.**
    This single fix removes every false positive this library hit and would
    let `check` return to gating ([§1.2](#12-the-def-cf-compr-workaround-trips-the-static-checker), [§6](#6-tooling--the-static-checker-aql-check)).
 2. **Make List `get` with an `each` variable, and `slice` on a value List,
@@ -419,5 +419,5 @@ genuinely pleasant:
 6. **Let `Test.run-spec` dispatch subjects that take a Function argument**
    ([§6](#6-tooling--the-static-checker-aql-check)), so declarative specs can cover higher-order words.
 
-*Report generated while building `Sort` against `aql @ 12a44e0`. Every
+*Report generated while building `Sort` against `boru @ 12a44e0`. Every
 snippet was executed against that build; outputs are reproduced verbatim.*

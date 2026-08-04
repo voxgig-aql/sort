@@ -1,16 +1,16 @@
 # Using this template
 
-**Forking `sort` to start a new AQL library? Read this first, then
+**Forking `sort` to start a new boru library? Read this first, then
 delete it.**
 
-This repo is a GitHub *template* for a small, single-purpose **AQL library**.
+This repo is a GitHub *template* for a small, single-purpose **boru library**.
 It is also a real, runnable library (a sorting library — every well-known
 sort, driven by composable comparators), so everything here — tests, docs,
 CI, and the agent configuration — is a working example you adapt rather than
 a skeleton you fill in. Clone it with **“Use this template”**, then walk the
 checklist below.
 
-The pair repo [`trie`](https://github.com/voxgig-aql/trie) follows the same
+The pair repo [`trie`](https://github.com/voxgig-boru/trie) follows the same
 structure for a *multi-module* library; look there if your library ships
 several modules/namespaces.
 
@@ -30,7 +30,7 @@ LICENSE                       MIT
 .gitignore
 .claude/
   settings.json               registers the SessionStart hook
-  hooks/session-start.sh      builds aql @ the pinned ref in remote sessions
+  hooks/session-start.sh      builds boru @ the pinned ref in remote sessions
   skills/<lib>-aql/SKILL.md   portable, auto-loaded agent skill (canonical copy)
 .claude-plugin/
   marketplace.json            this repo is also a plugin marketplace
@@ -38,7 +38,7 @@ plugins/<lib>-aql/
   .claude-plugin/plugin.json  plugin manifest
   skills/<lib>-aql/SKILL.md   BUNDLED copy of the skill (must equal the canonical one)
 .github/workflows/
-  test.yml                    GitHub Actions: build aql, run every suite + divergence + consistency jobs
+  test.yml                    GitHub Actions: build boru, run every suite + divergence + consistency jobs
 docs/                         Diátaxis docs: tutorial, how-to, reference, explanation
 test/
   <lib>_unit_test.aql         example-based unit tests — imperative (Test.test)
@@ -63,9 +63,9 @@ In this template, `<lib>` is `sort` and `<Ns>` is `Sort`: the library is
   the variant name for a multi-module one (e.g. `radix_unit_test.aql`). Every
   assertion-bearing suite ends with the same tail and prints `all green`;
   smoke suites carry no assertion (pass = no error).
-- **Single source of truth for the pinned aql commit:** the CI workflow’s
-  `env.AQL_REF` (full 40-char SHA). The `consistency` CI job fails if
-  `.claude/hooks/session-start.sh`’s `AQL_REF` or `api.json`’s `aql_ref`
+- **Single source of truth for the pinned boru commit:** the CI workflow’s
+  `env.BORU_REF` (full 40-char SHA). The `consistency` CI job fails if
+  `.claude/hooks/session-start.sh`’s `BORU_REF` or `api.json`’s `aql_ref`
   prefix drift from it. Bump the ref in the workflow, then update those two
   and re-run the suites.
 - **Agent docs, layered (kept self-contained, guarded against drift):**
@@ -108,9 +108,9 @@ here is `sort` / `Sort`.
    `marketplace.json` + `plugin.json` (name, source, description,
    homepage/repository).
 8. **SessionStart hook** — in `.claude/hooks/session-start.sh`, set the smoke
-   path to `test/<lib>_smoke_test.aql`. Set `AQL_REF` to your pinned commit
-   (same value as the CI workflow’s `env.AQL_REF`).
-9. **CI** — in the workflow (`.github/workflows/test.yml`), set `env.AQL_REF`,
+   path to `test/<lib>_smoke_test.aql`. Set `BORU_REF` to your pinned commit
+   (same value as the CI workflow’s `env.BORU_REF`).
+9. **CI** — in the workflow (`.github/workflows/test.yml`), set `env.BORU_REF`,
    list your suites with clear step labels, point the advisory check at
    `<lib>.aql`, and update the `consistency` job’s plugin paths.
 10. **Docs** — rewrite `docs/*` for your domain; keep the four-mode structure
@@ -121,5 +121,5 @@ here is `sort` / `Sort`.
 13. **CI** — a repo created with “Use this template” inherits the workflow and
     runs it on the first push/PR (just enable Actions for the new repo).
 
-When the rename is done, `for f in test/*.aql; do aql "$f"; done` should end
+When the rename is done, `for f in test/*.aql; do boru "$f"; done` should end
 every suite with `all green`.

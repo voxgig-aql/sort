@@ -1,6 +1,6 @@
 # Property-based tests for sort — DIRECT-CODE FORM.
 #
-# Exercises aql:test's imperative `Test.check-prop` driver:
+# Exercises boru:test's imperative `Test.check-prop` driver:
 #
 #   Test.check-prop NAME  [GEN-BODY]  [PROP-BODY]  RUNS  SEED  MAX-SHRINKS
 #
@@ -16,7 +16,7 @@
 # Run:
 #   aql test/sort_prop_test.aql
 
-import "aql:test" end
+import "boru:test" end
 import "./sort.aql" end
 
 

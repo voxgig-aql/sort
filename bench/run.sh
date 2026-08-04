@@ -4,7 +4,7 @@
 # Times each representative algorithm sorting a fixed, deterministic
 # pseudo-random Integer array under both aql execution surfaces —
 #   interpreter    AQL_NO_COMPILE=1 aql …      (the slow reference)
-#   bytecode VM    aql --compile …             (the default)
+#   bytecode VM    boru --compile …             (the default)
 # — and prints a table with the interpreter/compiled speedup.
 #
 # Each (algorithm, surface) runs as its OWN aql process, best-of REPS,
@@ -54,7 +54,7 @@ gen() {
   if [ "$kind" = dist ]; then call="a Sort.$name end"; span=4000; else call="a Sort.$name Sort.by-number end"; span=1000000; fi
   cat > "$tmp/prog.aql" <<EOF
 import "$repo/sort.aql" end
-import "aql:time-util" end
+import "boru:time-util" end
 def a (iota $size each [ var [[i] ((i mul 2654435761) mod $span) ] ])
 def t (TimeUtil.now) def _ ($call) print ((TimeUtil.total-ms (TimeUtil.elapsed t))) end
 EOF

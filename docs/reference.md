@@ -12,13 +12,13 @@ constraints. For *why* the library is built this way, see
 
 The module exports a single namespace, `Sort`. Import it with:
 
-```aql
+```boru
 import "./sort.aql"
 ```
 
 (No `end` is required after `import` on the pinned build; a trailing `end`
 is harmless.) A consuming script does **not** need to import
-`aql:string-util` or `aql:math-util` itself — `sort.aql` imports them
+`boru:string-util` or `boru:math-util` itself — `sort.aql` imports them
 internally.
 
 ---
@@ -29,7 +29,7 @@ Every operation is a forward-dispatched word and must be terminated with
 `end` (or wrapped in parentheses) at the call site, e.g.
 `xs Sort.quick Sort.by-number end` or `(xs Sort.quick Sort.by-number)`.
 Without a terminator the word collects the following token as an argument.
-This is general AQL forward-precedence behaviour, not specific to this
+This is general boru forward-precedence behaviour, not specific to this
 module.
 
 The shape is **data first**, then the verb, then the comparator (for the
@@ -84,7 +84,7 @@ compose — e.g. `(length-of/r Sort.by-key) Sort.reverse`.
 | `comp Sort.reverse end` | `comp:Comparator` | `Comparator` | reverses `comp` (descending) |
 | `keyfn Sort.by-key end` | `keyfn:Function` | `Comparator` | orders items by the key `keyfn` extracts, compared with `cmp` |
 
-```aql
+```boru
 print (([3 1 2] Sort.quick (Sort.by-number Sort.reverse) end)) end   # => [3, 2, 1]
 def len-of fn [[s:Any] [Integer] [ s size ]]
 print ((["bbb" "a" "cc"] Sort.merge (len-of/r Sort.by-key) end)) end # => ["a", "cc", "bbb"]
@@ -123,7 +123,7 @@ The space column is O(n) throughout because each algorithm copies the
 input into a fresh working FlexList (the input is never mutated) even when
 the underlying ordering is "in place" on that copy.
 
-```aql
+```boru
 print (([5 3 8 1] Sort.quick Sort.by-number end)) end   # => [1, 3, 5, 8]
 print (([5 3 8 1] Sort.sort  Sort.by-number end)) end   # => [1, 3, 5, 8]
 ```
@@ -150,7 +150,7 @@ the maximum.
 a value range over 1e8. The radix family and `bead` raise `bad_input` on a
 non-Integer or a **negative** element.
 
-```aql
+```boru
 print (([170 45 75 90 2 802] Sort.radix-lsd end)) end   # => [2, 45, 75, 90, 170, 802]
 print (([5 -2 8 -1 0] Sort.counting end)) end           # => [-2, -1, 0, 5, 8]
 ```
@@ -168,7 +168,7 @@ inefficient — for demonstration, not production.
 | `slow`   | superpolynomial | "multiply and surrender"; recursive |
 | `bogo`   | unbounded (capped) | shuffle-until-sorted with a deterministic LCG and a hard cap; raises `bogo_giveup` past the cap — use only on tiny inputs |
 
-```aql
+```boru
 print (([2 1] Sort.bogo Sort.by-number end)) end   # => [1, 2]
 ```
 
@@ -186,7 +186,7 @@ Test whether a list is already ordered under a comparator.
 | **Stack in**| a `List`, then a comparator |
 | **Returns** | `Boolean` — `true` iff `list` is ordered under the comparator |
 
-```aql
+```boru
 print (([1 2 3] Sort.is-sorted Sort.by-number end)) end   # => true
 print ((["c" "a" "b"] Sort.is-sorted Sort.by-string end)) end   # => false
 ```
@@ -204,5 +204,5 @@ All failures raise coded errors; catch with `do […] error […]` and read
 | `bogo_giveup` | `bogo` | shuffle cap exceeded without reaching sorted order |
 
 A missing `end` after a `Sort.*` call is not a module error but a general
-AQL dispatch problem — the word collects the following token (add `end` or
+boru dispatch problem — the word collects the following token (add `end` or
 parens).

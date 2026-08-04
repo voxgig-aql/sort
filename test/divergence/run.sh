@@ -2,39 +2,39 @@
 # Run every test suite through all three aql execution surfaces:
 #
 #   interpreter   aql X                  the default — what CI and users run
-#   check         aql check X            static type-check (ADVISORY here)
-#   byte compiler aql --compile X        bytecode when compilable, else a SILENT
+#   check         boru check X            static type-check (ADVISORY here)
+#   byte compiler boru --compile X        bytecode when compilable, else a SILENT
 #                                        fallback to the interpreter; documented
 #                                        to be IDENTICAL to it ("opt-in
 #                                        performance, never semantics")
 #
-# Plus an informational `aql --force-compile X` line per suite — how much of
+# Plus an informational `boru --force-compile X` line per suite — how much of
 # each program the emitter can fully lower today (refusals there are expected
 # coverage gaps; under --compile they fall back, so they are not failures).
 #
-# GATING: a non-zero interpreter run, or any difference between `aql --compile
+# GATING: a non-zero interpreter run, or any difference between `boru --compile
 # X` and `aql X`, fails the script. The CHECK surface is REPORTED BUT NOT
-# GATING: `aql check`'s static analysis has known false positives on
+# GATING: `boru check`'s static analysis has known false positives on
 # first-class function values — this module threads comparator functions
 # through every sort, and the checker flags a handful of those call sites and
 # the radix-msd self-recursion even though the interpreter and the byte
 # compiler both run and agree. (The upstream bloom template likewise runs
-# `aql check` as advisory; see .github/workflows/test.yml.) The real correctness guarantee is
+# `boru check` as advisory; see .github/workflows/test.yml.) The real correctness guarantee is
 # interpreter == byte compiler, which IS gating.
 #
 # This harness builds its OWN aql at the ref below (it equals the library's
 # pin, but pinning it here keeps the harness self-contained — it never depends
 # on whatever aql is on PATH). Cached under ~/.cache/aql-divergence; needs `go`
 # + network for the one-time build, fetched as a source tarball from
-# codeload.github.com so it works even where raw `git clone` of aql-lang/aql
+# codeload.github.com so it works even where raw `git clone` of boru-lang/boru
 # is blocked.
 set -uo pipefail
 
-# aql-lang/aql @ main, 2026-06-24 — the latest commit the library pins. Bump in
-# lockstep with the workflow AQL_REF.
-# Track aql-lang/aql MAIN: resolve its current HEAD at run time (no pinned
+# boru-lang/boru @ main, 2026-06-24 — the latest commit the library pins. Bump in
+# lockstep with the workflow BORU_REF.
+# Track boru-lang/boru MAIN: resolve its current HEAD at run time (no pinned
 # commit). Cached by the resolved SHA, so it rebuilds only when main advances.
-AQL_BYTECODE_REF="${AQL_BYTECODE_REF:-$(git ls-remote https://github.com/aql-lang/aql.git main | cut -f1)}"
+AQL_BYTECODE_REF="${AQL_BYTECODE_REF:-$(git ls-remote https://github.com/boru-lang/boru.git main | cut -f1)}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
@@ -56,12 +56,12 @@ if [ ! -x "$AQL" ]; then
   command -v go >/dev/null 2>&1 || { echo "error: Go toolchain not found." >&2; exit 1; }
   log "building aql @ $AQL_BYTECODE_REF (one-time; cached) …"
   src="$(mktemp -d)"
-  curl -fsSL "https://codeload.github.com/aql-lang/aql/tar.gz/$AQL_BYTECODE_REF" \
+  curl -fsSL "https://codeload.github.com/boru-lang/boru/tar.gz/$AQL_BYTECODE_REF" \
     | tar -xz -C "$src" --strip-components=1 || { echo "error: fetch/extract failed." >&2; exit 1; }
   mkdir -p "$CACHE"
   ( cd "$src/cmd/go" && GOWORK=off GOFLAGS=-mod=mod go build \
-      -ldflags "-X github.com/aql-lang/aql/cmd/go.Version=$AQL_BYTECODE_REF" \
-      -o "$AQL" ./aql ) || { echo "error: build failed." >&2; exit 1; }
+      -ldflags "-X github.com/boru-lang/boru/cmd/go.Version=$AQL_BYTECODE_REF" \
+      -o "$AQL" ./boru ) || { echo "error: build failed." >&2; exit 1; }
   rm -rf "$src"
 fi
 log "aql: $("$AQL" -version)"

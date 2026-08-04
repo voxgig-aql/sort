@@ -1,4 +1,4 @@
-# sort — direct unit tests using aql:test's imperative API.
+# sort — direct unit tests using boru:test's imperative API.
 #
 # Example-based checks: each algorithm sorts known inputs to known
 # outputs, the comparators impose the expected orders, and the error
@@ -8,7 +8,7 @@
 # Run:
 #   aql test/sort_unit_test.aql
 
-import "aql:test" end
+import "boru:test" end
 import "./sort.aql" end
 
 

@@ -1,18 +1,18 @@
 ---
 name: sort-aql
-description: Use when writing or editing AQL code that calls the Sort sorting library — Sort.quick / Sort.merge / Sort.heap / Sort.tim / Sort.counting / Sort.radix-lsd and the other algorithms, the comparators Sort.by-number / Sort.by-string / Sort.natural / Sort.case-insensitive / Sort.reverse / Sort.by-key, or any file that does `import "./sort.aql"`. Provides the exact AQL calling convention (which is not C/Python/JS), the comparator-driven API, verified copy-paste idioms, and fixes for the mistakes agents most often make (foreign call syntax like `xs.sort(cmp)`, misbinding the argument order — the list is the LAST argument — missing `end` terminators, forgetting `/r` on a comparator, assuming sorts mutate in place).
+description: Use when writing or editing boru code that calls the Sort sorting library — Sort.quick / Sort.merge / Sort.heap / Sort.tim / Sort.counting / Sort.radix-lsd and the other algorithms, the comparators Sort.by-number / Sort.by-string / Sort.natural / Sort.case-insensitive / Sort.reverse / Sort.by-key, or any file that does `import "./sort.aql"`. Provides the exact boru calling convention (which is not C/Python/JS), the comparator-driven API, verified copy-paste idioms, and fixes for the mistakes agents most often make (foreign call syntax like `xs.sort(cmp)`, misbinding the argument order — the list is the LAST argument — missing `end` terminators, forgetting `/r` on a comparator, assuming sorts mutate in place).
 ---
 
-# Calling the Sort library (AQL)
+# Calling the Sort library (boru)
 
-Every well-known sorting algorithm, over every AQL type, driven by
+Every well-known sorting algorithm, over every boru type, driven by
 composable **comparators**. Public surface = the `Sort` namespace. Sorts
 return a **new** sorted `List` and never mutate their input. Everything
-below is verified against `aql @ 6185620`.
+below is verified against `boru @ 6185620`.
 
 ## Import
 
-```aql
+```boru
 import "./sort.aql"
 ```
 
@@ -20,12 +20,12 @@ import "./sort.aql"
   from**, not the importing file. Adjust the relative path accordingly.
 - No `end` is needed after `import` on this build (a trailing `end` is
   harmless).
-- Do **not** import `aql:string-util` / `aql:math-util` — the library
+- Do **not** import `boru:string-util` / `boru:math-util` — the library
   does it.
 
 ## The one calling rule
 
-AQL has no `f(a, b)` and no `obj.method(a)`. Every `Sort` word takes the
+boru has no `f(a, b)` and no `obj.method(a)`. Every `Sort` word takes the
 list (the **receiver**) as its **last** parameter, so two orders bind
 correctly:
 
@@ -39,7 +39,7 @@ receiver is last, the call is *saturated* by it and needs no `end` (the
 closing paren terminates it). The **piping** form needs `end` (or parens)
 because the trailing comparator would otherwise swallow the next token.
 
-```aql
+```boru
 Sort.quick Sort.by-number [3 1 2]         # => [1, 2, 3]    ✓ forward (canonical)
 [3 1 2] Sort.quick Sort.by-number end     # => [1, 2, 3]    ✓ piping (needs end)
 Sort.counting [5 2 8 1]                    # => [1, 2, 5, 8] (no comparator)
@@ -49,7 +49,7 @@ The **one** order that MISBINDS is receiver-first-all-forward —
 `Sort.verb list comparator` — where the list is read as the comparator and
 the comparator as the list, raising a `signature_error`:
 
-```aql
+```boru
 Sort.quick [3 1 2] Sort.by-number         # ✗ WRONG — misbinds; do not write this
 ```
 
@@ -100,7 +100,7 @@ Catch errors with `do […] error […]`; read `e get code` in the handler.
 
 Canonical **forward** form — `Sort.verb  args  receiver` (receiver last):
 
-```aql
+```boru
 import "./sort.aql"
 print ((Sort.quick Sort.by-number [5 3 8 1])) end                    # => [1, 3, 5, 8]
 print ((Sort.merge Sort.by-string ["pear" "Apple" "fig"])) end       # => ['Apple', 'fig', 'pear']
@@ -110,19 +110,19 @@ print ((Sort.quick (Sort.by-number Sort.reverse) [5 3 8 1])) end     # => [8, 5,
 The **piping** form (receiver first) is equally valid — it just needs an
 `end` before the paren closes:
 
-```aql
+```boru
 print (([5 3 8 1] Sort.quick Sort.by-number end)) end                # => [1, 3, 5, 8]
 ```
 
 Natural / alphanumeric order (numbers compare by value, not digit):
 
-```aql
+```boru
 print ((Sort.merge Sort.natural ["file10" "file2" "file1"])) end     # => ['file1', 'file2', 'file10']
 ```
 
 Custom comparator (2-arg) and sort-by-key (a 1-arg **key function**):
 
-```aql
+```boru
 def by-len fn [[b:Any a:Any] [Integer] [ (a size) (b size) cmp ]]    # 2-arg comparator
 print ((Sort.merge by-len/r ["bbb" "a" "cc"])) end                   # => ['a', 'cc', 'bbb']
 
@@ -134,7 +134,7 @@ print ((Sort.merge (len-of/r Sort.by-key) ["bbb" "a" "cc"])) end     # => ['a', 
 
 | ✗ Don't | ✓ Do | Why |
 |---------|------|-----|
-| `Sort.quick([3 1 2], cmp)` / `[3 1 2].sort(cmp)` | `Sort.quick cmp/r [3 1 2]` (or `[3 1 2] Sort.quick cmp/r end`) | AQL has no call/method syntax. |
+| `Sort.quick([3 1 2], cmp)` / `[3 1 2].sort(cmp)` | `Sort.quick cmp/r [3 1 2]` (or `[3 1 2] Sort.quick cmp/r end`) | boru has no call/method syntax. |
 | `Sort.quick nums Sort.by-number` (receiver between verb and comparator) | `Sort.quick Sort.by-number nums` (receiver LAST) | Receiver-first-all-forward misbinds: the list is read as the comparator (`signature_error`). |
 | `xs Sort.quick Sort.by-number` (piping, no terminator) | add `end`, or use forward `Sort.quick Sort.by-number xs` | In piping the trailing comparator swallows the next token; forward form needs no `end`. |
 | `xs Sort.quick mycmp end` | `xs Sort.quick mycmp/r end` | A bare own-word comparator auto-invokes; `/r` passes it as a value. |
@@ -152,7 +152,7 @@ print ((Sort.merge (len-of/r Sort.by-key) ["bbb" "a" "cc"])) end     # => ['a', 
 - **`eq` is identity, `deq` is structural.** `[1 2 3] eq [1 2 3]` is
   `false` (distinct objects); use `deq` when asserting a sorted List
   equals an expected List by value.
-- **Integer overflow fails loud.** AQL Integers are fixed-width (signed
+- **Integer overflow fails loud.** boru Integers are fixed-width (signed
   64-bit); arithmetic that overflows the range raises `integer_overflow`
   rather than wrapping — this is intended. The default comparators use
   `cmp`, which never subtracts, so ordering itself is overflow-safe; watch

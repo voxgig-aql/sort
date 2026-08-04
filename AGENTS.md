@@ -1,7 +1,7 @@
 # AGENTS.md — using the `Sort` library
 
-Guidance for an AI coding agent calling this sorting library from an AQL
-project. Every code block below is verified to run against `aql-lang/aql`
+Guidance for an AI coding agent calling this sorting library from an boru
+project. Every code block below is verified to run against `boru-lang/boru`
 @ `6185620`. If you read nothing else, read
 [The one calling rule](#the-one-calling-rule) and
 [Common mistakes](#common-mistakes).
@@ -12,7 +12,7 @@ project. Every code block below is verified to run against `aql-lang/aql`
 
 ## What it is
 
-Every well-known sorting algorithm, over every AQL type, driven by
+Every well-known sorting algorithm, over every boru type, driven by
 composable **comparators**. The public surface is the single `Sort`
 namespace. Sorts return a **new** sorted `List` and never mutate their
 input.
@@ -32,7 +32,7 @@ input.
 
 ## Import
 
-```aql
+```boru
 import "./sort.aql"
 ```
 
@@ -41,12 +41,12 @@ import "./sort.aql"
   valid (adjust otherwise).
 - No `end` is needed after `import` on this build; a trailing `end` is
   harmless.
-- Do **not** import `aql:string-util` or `aql:math-util` yourself —
+- Do **not** import `boru:string-util` or `boru:math-util` yourself —
   `sort.aql` imports its own dependencies.
 
 ## The one calling rule
 
-AQL is not C/Python/JS. There is no `f(a, b)` and no `obj.method(a)`.
+boru is not C/Python/JS. There is no `f(a, b)` and no `obj.method(a)`.
 Every `Sort` word takes the list (the **receiver**) as its **last**
 parameter, so two orders bind correctly:
 
@@ -60,7 +60,7 @@ trailing list, so it needs no `end` (the closing paren terminates it). The
 **piping** form needs `end` (or parens) because the trailing comparator
 would otherwise swallow the next token.
 
-```aql
+```boru
 Sort.quick Sort.by-number [3 1 2]                 # => [1 2 3]    forward (canonical)
 [3 1 2] Sort.quick Sort.by-number end             # => [1 2 3]    piping (needs end)
 [5 2 8 1] Sort.counting end                        # => [1 2 5 8]  (no comparator)
@@ -70,7 +70,7 @@ The **one** order that MISBINDS is receiver-first-all-forward —
 `Sort.verb list comparator` — where the list is read as the comparator (and
 vice versa), raising a `signature_error`:
 
-```aql
+```boru
 Sort.quick [3 1 2] Sort.by-number                 # ✗ WRONG — misbinds; do not write this
 ```
 
@@ -87,7 +87,7 @@ The API reference below is written in the piping shape
 | your own comparator word | `mycmp/r` | `/r` hands the word over as a value instead of invoking it |
 | the built-in `cmp` | `cmp/r` | same — `/r` defers the call |
 
-```aql
+```boru
 def by-len fn [[b:Any a:Any] [Integer] [ (a size) (b size) cmp ]]
 ["bbb" "a" "cc"] Sort.merge by-len/r end           # => [a cc bbb]
 [3 1 2]           Sort.heap  cmp/r   end            # => [1 2 3]
@@ -101,7 +101,7 @@ they are equivalent, positive if after. Only the sign matters — the same
 contract as the built-in `cmp` and as C's `qsort`. Write the body in terms
 of `a` (the earlier item) and `b` (the later one):
 
-```aql
+```boru
 def by-second fn [
   [b:Any a:Any] [Integer] [ (a get 1) (b get 1) cmp ]   # order pairs by their 2nd element
 ]
@@ -158,7 +158,7 @@ raises `bogo_giveup` past its cap — use only on tiny inputs).
 
 Sort numbers, strings, and a custom order:
 
-```aql
+```boru
 import "./sort.aql"
 print (([5 3 8 1] Sort.quick Sort.by-number end)) end                # => [1 3 5 8]
 print ((["pear" "Apple" "fig"] Sort.merge Sort.by-string end)) end   # => [Apple fig pear]
@@ -168,26 +168,26 @@ print (([5 3 8 1] Sort.quick (Sort.by-number Sort.reverse) end)) end # => [8 5 3
 Natural / alphanumeric ordering (the headline utility — numbers that
 appear as prefixes or suffixes sort by value, not by digit):
 
-```aql
+```boru
 print ((["file10" "file2" "file1"] Sort.merge Sort.natural end)) end # => [file1 file2 file10]
 ```
 
 Sort by a derived key (here, string length):
 
-```aql
+```boru
 def by-len fn [[s:Any] [Integer] [ s size ]]
 print ((["bbb" "a" "cc"] Sort.merge (by-len/r Sort.by-key) end)) end  # => [a cc bbb]
 ```
 
 Distribution sort over Integers (no comparator):
 
-```aql
+```boru
 print (([170 45 75 90 2 802 24 66] Sort.radix-lsd end)) end          # => [2 24 45 66 75 90 170 802]
 ```
 
 Check an ordering, and trap a distribution sort's input error:
 
-```aql
+```boru
 print (([1 2 3] Sort.is-sorted Sort.by-number end)) end              # => true
 def result (do [["a" "b"] Sort.counting end] error [ get code ])     # => bad_input
 ```
@@ -196,7 +196,7 @@ def result (do [["a" "b"] Sort.counting end] error [ get code ])     # => bad_in
 
 | ✗ Don't write | ✓ Write | Why |
 |---------------|---------|-----|
-| `Sort.quick([3 1 2], cmp)` | `[3 1 2] Sort.quick cmp/r end` | No `f(a,b)` syntax in AQL. |
+| `Sort.quick([3 1 2], cmp)` | `[3 1 2] Sort.quick cmp/r end` | No `f(a,b)` syntax in boru. |
 | `[3 1 2].sort(cmp)` | `[3 1 2] Sort.quick cmp/r end` | No method-call syntax. |
 | `Sort.quick nums Sort.by-number` (receiver between verb and comparator) | `Sort.quick Sort.by-number nums` (receiver LAST) | Receiver-first-all-forward misbinds: the list is read as the comparator (`signature_error`). |
 | `xs Sort.quick Sort.by-number` (no terminator) | `xs Sort.quick Sort.by-number end` | The verb swallows the next token without `end`/parens. |
@@ -217,6 +217,6 @@ appears in source order.
 - `api.json` — the same API as a machine-readable manifest.
 - `docs/how-to.md` — task recipes (custom orders, natural sort, by-key).
 - `docs/tutorial.md` — a hands-on first sort.
-- `docs/explanation.md` — why the comparator-driven design, and the AQL
+- `docs/explanation.md` — why the comparator-driven design, and the boru
   idioms it rests on.
 - `test/sort_smoke_test.aql` — a complete, runnable worked example.

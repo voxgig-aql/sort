@@ -22,7 +22,7 @@
 # Run:
 #   aql test/sort_unit_spec.aql
 
-import "aql:test" end
+import "boru:test" end
 import "./sort.aql" end
 
 
