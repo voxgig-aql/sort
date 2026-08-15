@@ -35,6 +35,14 @@ mistakes to avoid. Every example there is verified against the pinned
   agree); `boru check` is **advisory** here, because its static analysis has
   known false positives on first-class function values, which this library
   threads through every sort. See its `README.md`.
+- `DESIGN.md` holds the argued plan for work that is **designed but not
+  implemented** — currently the topological-sort family (a comparator
+  orders the ready set, so it degenerates to a plain sort on an edgeless
+  graph) and a prioritised catalogue of the other missing ordering
+  families (selection, ranking, multi-key combinators, sorted-sequence
+  operations). Read it before adding a new family: it records the naming
+  collisions, the boru runtime constraints that force each shape, and the
+  reasons several obvious-looking candidates were declined.
 - boru-runtime gotchas discovered while building this library are captured
   inline as code comments in `sort.aql` and in AGENTS.md's "Common
   mistakes". The pinned boru commit is single-sourced in the CI workflow's

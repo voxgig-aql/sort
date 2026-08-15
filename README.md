@@ -107,6 +107,7 @@ skill.
 ```
 sort.aql                  the library (the Sort namespace: comparators + algorithms)
 AGENTS.md                 agent guide: how to call this library correctly
+DESIGN.md                 design notes for planned work (not yet implemented)
 test/sort_unit_test.aql   example-based unit tests — direct (Test.test)
 test/sort_unit_spec.aql   example-based unit tests — declarative spec format
 test/sort_prop_test.aql   property-based tests — direct (Test.check-prop)
